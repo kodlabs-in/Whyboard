@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="26000" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="Whyboard-Launch-Controller">
+    <device id="ipad13_4" orientation="landscape" layout="fullscreen" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="26000"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="System colors in document resources" minToolsVersion="11.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="Whyboard-Launch-Scene">
+            <objects>
+                <viewController id="Whyboard-Launch-Controller" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="Whyboard-Launch-View">
+                        <rect key="frame" x="0.0" y="0.0" width="1194" height="834"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="LaunchLogo" translatesAutoresizingMaskIntoConstraints="NO" id="Whyboard-Launch-Logo">
+                                <rect key="frame" x="481" y="304" width="232" height="232"/>
+                                <constraints>
+                                    <constraint firstAttribute="width" constant="232" id="Whyboard-Logo-Width"/>
+                                    <constraint firstAttribute="height" secondItem="Whyboard-Launch-Logo" secondAttribute="width" id="Whyboard-Logo-Aspect"/>
+                                </constraints>
+                            </imageView>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="Whyboard-Launch-Safe-Area"/>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                        <constraints>
+                            <constraint firstItem="Whyboard-Launch-Logo" firstAttribute="centerX" secondItem="Whyboard-Launch-View" secondAttribute="centerX" id="Whyboard-Logo-Center-X"/>
+                            <constraint firstItem="Whyboard-Launch-Logo" firstAttribute="centerY" secondItem="Whyboard-Launch-View" secondAttribute="centerY" id="Whyboard-Logo-Center-Y"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="Whyboard-Launch-Responder" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="75" y="127"/>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="LaunchLogo" width="256" height="256"/>
+        <systemColor name="systemBackgroundColor">
+            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
+    </resources>
+</document>
