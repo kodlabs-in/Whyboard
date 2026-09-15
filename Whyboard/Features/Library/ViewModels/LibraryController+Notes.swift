@@ -2,17 +2,22 @@ import Foundation
 import SwiftData
 
 extension LibraryController {
-  func createNote(folders: [Folder], context: ModelContext) {
-    guard let folderID = noteDestinationFolderID(in: folders) else {
-      errorMessage = "The Unfiled Notes folder is unavailable."
-      return
+  @discardableResult
+  func createNote(
+    in location: LibraryLocation,
+    folders: [Folder],
+    context: ModelContext
+  ) -> UUID? {
+    guard let folderID = storageFolderID(for: location, folders: folders) else {
+      errorMessage = "Whyboard couldn't find the current folder."
+      return nil
     }
 
     let note = Note(folderID: folderID)
     context.insert(note)
     context.insert(Page(noteID: note.id, sortOrder: 0))
     save(context)
-    selectedNoteID = note.id
+    return note.id
   }
 
   func presentNoteRename(_ note: Note, context: ModelContext) {
@@ -29,16 +34,20 @@ extension LibraryController {
   }
 
   func presentNoteMove(_ note: Note, folders: [Folder], context: ModelContext) {
+    let rootFolderID = rootFolder(in: folders)?.id
     destinationPicker = DestinationPickerRequest(
       title: "Move \(note.title)",
       destinations: noteDestinations(from: folders),
-      currentFolderID: note.folderID
+      currentFolderID: note.folderID == rootFolderID ? nil : note.folderID
     ) { [weak self] destination in
-      guard let self, let destination else { return }
-      note.folderID = destination.id
+      guard let self else { return }
+      guard let folderID = destination?.id ?? rootFolderID else {
+        errorMessage = "Whyboard couldn't find the Library."
+        return
+      }
+      note.folderID = folderID
       note.updatedAt = Date()
       save(context)
-      location = .folder(destination.id)
     }
   }
 
@@ -61,21 +70,8 @@ extension LibraryController {
     }
   }
 
-  private func noteDestinationFolderID(in folders: [Folder]) -> UUID? {
-    switch location ?? .all {
-    case .all:
-      folders.first(where: \.isSystem)?.id
-    case .folder(let folderID):
-      folderID
-    }
-  }
-
   private func noteDestinations(from folders: [Folder]) -> [FolderDestination] {
-    let unfiled =
-      folders.first(where: \.isSystem).map {
-        [FolderDestination(folder: $0, depth: 0)]
-      } ?? []
-    return unfiled + FolderHierarchy.destinations(from: folders, includeRoot: false)
+    FolderHierarchy.destinations(from: folders, includeRoot: true)
   }
 
   private func deleteNote(
@@ -86,9 +82,6 @@ extension LibraryController {
   ) {
     pages.filter { $0.noteID == note.id }.forEach(context.delete)
     context.delete(note)
-    if selectedNoteID == note.id {
-      selectedNoteID = nil
-    }
     save(context)
 
     let noteID = note.id

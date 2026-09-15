@@ -15,7 +15,9 @@ final class WhyboardUITests: XCTestCase {
   @MainActor
   func testCreatesANoteAndAddsASecondPage() throws {
     let app = try XCTUnwrap(app)
-    XCTAssertTrue(app.staticTexts["All Notes"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.navigationBars["Whyboard"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["All Notes"].exists)
+    XCTAssertFalse(app.staticTexts["Unfiled Notes"].exists)
 
     let newNoteButton = app.buttons["New Note"].firstMatch
     XCTAssertTrue(newNoteButton.waitForExistence(timeout: 3))
@@ -35,7 +37,7 @@ final class WhyboardUITests: XCTestCase {
   @MainActor
   func testCreatesAndSelectsAFolder() throws {
     let app = try XCTUnwrap(app)
-    let newFolderButton = app.buttons["New Folder"]
+    let newFolderButton = app.buttons["New Folder"].firstMatch
     XCTAssertTrue(newFolderButton.waitForExistence(timeout: 5))
     newFolderButton.tap()
 
@@ -51,6 +53,22 @@ final class WhyboardUITests: XCTestCase {
     folder.tap()
     XCTAssertTrue(app.navigationBars["Calculus"].waitForExistence(timeout: 3))
     attachScreenshot(named: "Library folder")
+  }
+
+  @MainActor
+  func testChangesTheDefaultPaperInSettings() throws {
+    let app = try XCTUnwrap(app)
+    let settingsButton = app.buttons["Settings"]
+    XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+    settingsButton.tap()
+
+    XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+    let defaultPaper = app.descendants(matching: .any)["default-paper-picker"]
+    XCTAssertTrue(defaultPaper.waitForExistence(timeout: 3))
+    defaultPaper.tap()
+    app.buttons["Black"].tap()
+    XCTAssertTrue(app.staticTexts["Black"].waitForExistence(timeout: 3))
+    attachScreenshot(named: "Settings paper selection")
   }
 
   @MainActor

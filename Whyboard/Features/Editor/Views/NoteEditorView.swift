@@ -9,7 +9,9 @@ struct NoteEditorView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Query private var pages: [Page]
 
-  @AppStorage("drawWithFinger") private var drawsWithFinger = false
+  @AppStorage("drawWithFinger", store: AppPreferences.store) private var drawsWithFinger = false
+  @AppStorage(NotePaperStyle.defaultStorageKey, store: AppPreferences.store)
+  private var defaultPaperStyleRawValue = NotePaperStyle.defaultStyle.rawValue
   @State private var controller: EditorController
   @State private var toolPickerController = ToolPickerController()
   @State private var scrollPosition: ScrollPosition
@@ -41,6 +43,10 @@ struct NoteEditorView: View {
 
   private var orderedPageIDs: [UUID] {
     orderedPages.map(\.id)
+  }
+
+  private var resolvedPaperStyle: NotePaperStyle {
+    note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
   }
 
   var body: some View {
@@ -75,7 +81,11 @@ struct NoteEditorView: View {
     .toolbarBackground(WhyboardTheme.chromeBackground, for: .navigationBar)
     .toolbarBackground(.visible, for: .navigationBar)
     .toolbar { editorToolbar }
-    .safeAreaInset(edge: .top) { saveErrorBanner }
+    .safeAreaInset(edge: .top) {
+      EditorSaveErrorBanner(status: controller.saveStatus) {
+        Task { await controller.flushAll() }
+      }
+    }
     .sheet(isPresented: $showsPageOrganizer) {
       PageOrganizerSheet(pages: orderedPages, onMove: movePages)
     }
@@ -120,6 +130,7 @@ struct NoteEditorView: View {
       pageNumber: index + 1,
       pageCount: orderedPages.count,
       isLive: controller.livePageIDs.contains(page.id),
+      paperStyle: resolvedPaperStyle,
       drawsWithFinger: drawsWithFinger,
       session: session,
       drawingRepository: drawingRepository,
@@ -169,25 +180,13 @@ struct NoteEditorView: View {
 
       Menu("Note Options", systemImage: "ellipsis.circle") {
         Button("Rename Note", systemImage: "pencil", action: presentRename)
+        Picker("Paper Color", selection: paperStyleSelection) {
+          ForEach(NotePaperStyle.allCases) { style in
+            Text(style.name).tag(style)
+          }
+        }
         Toggle("Draw with Finger", isOn: $drawsWithFinger)
       }
-    }
-  }
-
-  @ViewBuilder
-  private var saveErrorBanner: some View {
-    if case .failed(let message) = controller.saveStatus {
-      HStack(spacing: 10) {
-        Image(systemName: "exclamationmark.triangle.fill")
-        Text(message)
-          .font(.callout)
-        Spacer()
-        Button("Retry") { Task { await controller.flushAll() } }
-      }
-      .foregroundStyle(.red)
-      .padding(.horizontal, 16)
-      .padding(.vertical, 10)
-      .background(.regularMaterial)
     }
   }
 
@@ -201,6 +200,16 @@ struct NoteEditorView: View {
     Binding(
       get: { controller.errorMessage != nil },
       set: { if !$0 { controller.errorMessage = nil } })
+  }
+
+  private var paperStyleSelection: Binding<NotePaperStyle> {
+    Binding(
+      get: { note.paperStyle },
+      set: { style in
+        note.paperStyle = style
+        note.updatedAt = Date()
+        try? modelContext.save()
+      })
   }
 
   private func prepareEditor() {

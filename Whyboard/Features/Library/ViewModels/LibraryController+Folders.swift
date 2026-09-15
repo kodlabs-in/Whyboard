@@ -2,8 +2,12 @@ import Foundation
 import SwiftData
 
 extension LibraryController {
-  func presentNewFolder(folders: [Folder], context: ModelContext) {
-    let parentID = selectedParentFolderID(in: folders)
+  func presentNewFolder(
+    in location: LibraryLocation,
+    folders: [Folder],
+    context: ModelContext
+  ) {
+    let parentID = parentFolderID(for: location, folders: folders)
     nameEditor = NameEditorRequest(
       title: "New Folder",
       prompt: "Folder name",
@@ -56,8 +60,8 @@ extension LibraryController {
     }
   }
 
-  private func selectedParentFolderID(in folders: [Folder]) -> UUID? {
-    guard let location, case .folder(let folderID) = location else { return nil }
+  private func parentFolderID(for location: LibraryLocation, folders: [Folder]) -> UUID? {
+    guard case .folder(let folderID) = location else { return nil }
     return folders.first { $0.id == folderID && !$0.isSystem }?.id
   }
 
@@ -103,8 +107,6 @@ extension LibraryController {
     mutationContext.folders
       .filter { folderIDs.contains($0.id) }
       .forEach(mutationContext.modelContext.delete)
-    selectedNoteID = nil
-    location = .all
     save(mutationContext.modelContext)
 
     let drawingRepository = mutationContext.drawingRepository

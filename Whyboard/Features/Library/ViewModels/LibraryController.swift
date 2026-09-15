@@ -4,9 +4,6 @@ import SwiftUI
 
 @Observable
 final class LibraryController {
-  var location: LibraryLocation? = .all
-  var selectedNoteID: UUID?
-  var searchText = ""
   var nameEditor: NameEditorRequest?
   var destinationPicker: DestinationPickerRequest?
   var confirmation: ConfirmationRequest?
@@ -22,26 +19,52 @@ final class LibraryController {
     set { if !newValue { errorMessage = nil } }
   }
 
-  func selectedNote(in notes: [Note]) -> Note? {
-    notes.first { $0.id == selectedNoteID }
-  }
-
-  func visibleNotes(from notes: [Note]) -> [Note] {
-    notes.filter(matchesLocation).filter(matchesSearch)
-  }
-
-  func locationTitle(folders: [Folder]) -> String {
-    switch location ?? .all {
-    case .all:
-      "All Notes"
+  func folders(in location: LibraryLocation, from folders: [Folder]) -> [Folder] {
+    let parentID: UUID?
+    switch location {
+    case .root:
+      parentID = nil
     case .folder(let folderID):
-      folders.first { $0.id == folderID }?.name ?? "Notes"
+      parentID = folderID
+    }
+
+    return folders.filter { !$0.isSystem && $0.parentFolderID == parentID }
+  }
+
+  func notes(
+    in location: LibraryLocation,
+    from notes: [Note],
+    folders: [Folder]
+  ) -> [Note] {
+    guard let folderID = storageFolderID(for: location, folders: folders) else { return [] }
+    return notes.filter { $0.folderID == folderID }
+  }
+
+  func locationTitle(_ location: LibraryLocation, folders: [Folder]) -> String {
+    switch location {
+    case .root:
+      "Whyboard"
+    case .folder(let folderID):
+      folders.first { $0.id == folderID }?.name ?? "Folder"
     }
   }
 
-  func restoreLastOpenedNote(idString: String, notes: [Note]) {
-    guard let id = UUID(uuidString: idString) else { return }
-    selectedNoteID = notes.first { $0.id == id }?.id
+  func filteredNotes(_ notes: [Note], matching searchText: String) -> [Note] {
+    guard !searchText.isEmpty else { return notes }
+    return notes.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+  }
+
+  func rootFolder(in folders: [Folder]) -> Folder? {
+    folders.first(where: \.isSystem)
+  }
+
+  func storageFolderID(for location: LibraryLocation, folders: [Folder]) -> UUID? {
+    switch location {
+    case .root:
+      rootFolder(in: folders)?.id
+    case .folder(let folderID):
+      folderID
+    }
   }
 
   func save(_ context: ModelContext) {
@@ -50,18 +73,5 @@ final class LibraryController {
     } catch {
       errorMessage = error.localizedDescription
     }
-  }
-
-  private func matchesLocation(_ note: Note) -> Bool {
-    switch location ?? .all {
-    case .all:
-      true
-    case .folder(let folderID):
-      note.folderID == folderID
-    }
-  }
-
-  private func matchesSearch(_ note: Note) -> Bool {
-    searchText.isEmpty || note.title.localizedCaseInsensitiveContains(searchText)
   }
 }

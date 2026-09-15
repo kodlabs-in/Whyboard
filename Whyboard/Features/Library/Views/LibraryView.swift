@@ -8,8 +8,8 @@ struct LibraryView: View {
   @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
   @Query(sort: \Page.sortOrder) private var pages: [Page]
 
-  @AppStorage("lastOpenedNoteID") private var lastOpenedNoteID = ""
   @State private var controller = LibraryController()
+  @State private var routes: [LibraryRoute] = []
 
   let drawingRepository: DrawingRepository
 
@@ -29,27 +29,11 @@ struct LibraryView: View {
   var body: some View {
     @Bindable var controller = controller
 
-    NavigationSplitView {
-      FolderSidebar(
-        folders: folders,
-        selection: $controller.location,
-        onCreateFolder: presentNewFolder,
-        onRenameFolder: presentFolderRename,
-        onMoveFolder: presentFolderMove,
-        onDeleteFolder: confirmFolderDeletion)
-    } content: {
-      NoteListView(
-        title: controller.locationTitle(folders: folders),
-        notes: controller.visibleNotes(from: notes),
-        pageCounts: pageCounts,
-        selection: $controller.selectedNoteID,
-        searchText: $controller.searchText,
-        onCreateNote: createNote,
-        onRenameNote: presentNoteRename,
-        onMoveNote: presentNoteMove,
-        onDeleteNote: confirmNoteDeletion)
-    } detail: {
-      detailView
+    NavigationStack(path: $routes) {
+      browserView(for: .root)
+        .navigationDestination(for: LibraryRoute.self) { route in
+          routeDestination(route)
+        }
     }
     .tint(WhyboardTheme.accent)
     .sheet(item: $controller.nameEditor) { NameEditorSheet(request: $0) }
@@ -72,34 +56,51 @@ struct LibraryView: View {
     } message: {
       Text(controller.errorMessage ?? "Please try again.")
     }
-    .onAppear {
-      controller.restoreLastOpenedNote(idString: lastOpenedNoteID, notes: notes)
-    }
-    .onChange(of: controller.location) { _, _ in controller.selectedNoteID = nil }
-    .onChange(of: controller.selectedNoteID) { _, newValue in
-      lastOpenedNoteID = newValue?.uuidString ?? ""
-    }
   }
 
   @ViewBuilder
-  private var detailView: some View {
-    if let note = controller.selectedNote(in: notes) {
-      NoteEditorView(note: note, drawingRepository: drawingRepository)
-        .id(note.id)
-    } else {
-      ZStack {
-        WhyboardTheme.chromeBackground.ignoresSafeArea()
-        ContentUnavailableView {
-          Label("Ready when you are", systemImage: "pencil.and.outline")
-        } description: {
-          Text("Choose a note, or create one to begin writing.")
-        }
+  private func routeDestination(_ route: LibraryRoute) -> some View {
+    switch route {
+    case .folder(let folderID):
+      if folders.contains(where: { $0.id == folderID && !$0.isSystem }) {
+        browserView(for: .folder(folderID))
+      } else {
+        ContentUnavailableView("Folder unavailable", systemImage: "folder.badge.questionmark")
       }
+    case .note(let noteID):
+      if let note = notes.first(where: { $0.id == noteID }) {
+        NoteEditorView(note: note, drawingRepository: drawingRepository)
+          .id(note.id)
+      } else {
+        ContentUnavailableView("Note unavailable", systemImage: "note.text")
+      }
+    case .settings:
+      SettingsView()
     }
   }
 
-  private func presentNewFolder() {
-    controller.presentNewFolder(folders: folders, context: modelContext)
+  private func browserView(for location: LibraryLocation) -> some View {
+    LibraryBrowserView(
+      title: controller.locationTitle(location, folders: folders),
+      folders: controller.folders(in: location, from: folders),
+      notes: controller.notes(in: location, from: notes, folders: folders),
+      pageCounts: pageCounts,
+      showsSettings: location == .root,
+      onOpenFolder: { routes.append(.folder($0.id)) },
+      onOpenNote: { routes.append(.note($0.id)) },
+      onCreateFolder: { presentNewFolder(in: location) },
+      onCreateNote: { createNote(in: location) },
+      onOpenSettings: { routes.append(.settings) },
+      onRenameFolder: presentFolderRename,
+      onMoveFolder: presentFolderMove,
+      onDeleteFolder: confirmFolderDeletion,
+      onRenameNote: presentNoteRename,
+      onMoveNote: presentNoteMove,
+      onDeleteNote: confirmNoteDeletion)
+  }
+
+  private func presentNewFolder(in location: LibraryLocation) {
+    controller.presentNewFolder(in: location, folders: folders, context: modelContext)
   }
 
   private func presentFolderRename(_ folder: Folder) {
@@ -111,13 +112,17 @@ struct LibraryView: View {
   }
 
   private func confirmFolderDeletion(_ folder: Folder) {
-    controller.confirmFolderDeletion(
-      folder,
-      mutationContext: mutationContext)
+    controller.confirmFolderDeletion(folder, mutationContext: mutationContext)
   }
 
-  private func createNote() {
-    controller.createNote(folders: folders, context: modelContext)
+  private func createNote(in location: LibraryLocation) {
+    guard
+      let noteID = controller.createNote(
+        in: location,
+        folders: folders,
+        context: modelContext)
+    else { return }
+    routes.append(.note(noteID))
   }
 
   private func presentNoteRename(_ note: Note) {
@@ -135,4 +140,10 @@ struct LibraryView: View {
       context: modelContext,
       drawingRepository: drawingRepository)
   }
+}
+
+private enum LibraryRoute: Hashable {
+  case folder(UUID)
+  case note(UUID)
+  case settings
 }

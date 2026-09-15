@@ -13,7 +13,7 @@ struct LibraryControllerTests {
     context.insert(unfiled)
     let controller = LibraryController()
 
-    controller.createNote(folders: [unfiled], context: context)
+    let createdNoteID = controller.createNote(in: .root, folders: [unfiled], context: context)
 
     let notes = try context.fetch(FetchDescriptor<Note>())
     let pages = try context.fetch(FetchDescriptor<Page>())
@@ -21,7 +21,7 @@ struct LibraryControllerTests {
     #expect(notes.first?.folderID == unfiled.id)
     #expect(pages.count == 1)
     #expect(pages.first?.noteID == notes.first?.id)
-    #expect(controller.selectedNoteID == notes.first?.id)
+    #expect(createdNoteID == notes.first?.id)
   }
 
   @Test func movingAndRenamingANotePreservesItsIdentity() throws {
@@ -50,9 +50,45 @@ struct LibraryControllerTests {
     let algebra = Note(folderID: folderID, title: "Linear Algebra")
     let physics = Note(folderID: folderID, title: "Physics")
     let controller = LibraryController()
-    controller.searchText = "ALGEBRA"
 
-    #expect(controller.visibleNotes(from: [physics, algebra]).map(\.id) == [algebra.id])
+    #expect(
+      controller.filteredNotes([physics, algebra], matching: "ALGEBRA").map(\.id) == [
+        algebra.id
+      ])
+  }
+
+  @Test func browserShowsOnlyDirectFoldersAndNotes() {
+    let rootStorage = Folder(name: "Unfiled Notes", isSystem: true)
+    let mathematics = Folder(name: "Mathematics")
+    let algebra = Folder(parentFolderID: mathematics.id, name: "Algebra")
+    let nested = Folder(parentFolderID: algebra.id, name: "Linear Equations")
+    let rootNote = Note(folderID: rootStorage.id, title: "Inbox")
+    let mathNote = Note(folderID: mathematics.id, title: "Limits")
+    let controller = LibraryController()
+    let folders = [rootStorage, mathematics, algebra, nested]
+    let notes = [rootNote, mathNote]
+
+    #expect(controller.folders(in: .root, from: folders).map(\.id) == [mathematics.id])
+    #expect(
+      controller.folders(in: .folder(mathematics.id), from: folders).map(\.id) == [algebra.id])
+    #expect(controller.notes(in: .root, from: notes, folders: folders).map(\.id) == [rootNote.id])
+    #expect(
+      controller.notes(in: .folder(mathematics.id), from: notes, folders: folders).map(\.id)
+        == [mathNote.id])
+  }
+
+  @Test func notePaperStyleCanFollowDefaultOrOverrideIt() {
+    let note = Note(folderID: UUID())
+
+    #expect(note.paperStyle == .automatic)
+    #expect(note.paperStyle.resolved(defaultRawValue: NotePaperStyle.cream.rawValue) == .cream)
+
+    note.paperStyle = .black
+    #expect(note.paperStyle == .black)
+    #expect(note.paperStyle.resolved(defaultRawValue: NotePaperStyle.white.rawValue) == .black)
+
+    note.paperStyle = .automatic
+    #expect(note.paperStyleRawValue == nil)
   }
 
   private func makeContainer() throws -> ModelContainer {

@@ -1,6 +1,6 @@
 import Foundation
 
 enum LibraryLocation: Hashable {
-  case all
+  case root
   case folder(UUID)
 }

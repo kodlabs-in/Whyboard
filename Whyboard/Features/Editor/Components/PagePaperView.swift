@@ -6,6 +6,7 @@ struct PagePaperView: View {
   let pageNumber: Int
   let pageCount: Int
   let isLive: Bool
+  let paperStyle: NotePaperStyle
   let drawsWithFinger: Bool
   let session: PageSession
   let drawingRepository: DrawingRepository
@@ -20,7 +21,7 @@ struct PagePaperView: View {
   var body: some View {
     ZStack {
       RoundedRectangle(cornerRadius: WhyboardTheme.pageCornerRadius, style: .continuous)
-        .fill(WhyboardTheme.paper)
+        .fill(WhyboardTheme.paperColor(for: paperStyle))
 
       pageContent
 
@@ -33,7 +34,7 @@ struct PagePaperView: View {
     .clipShape(RoundedRectangle(cornerRadius: WhyboardTheme.pageCornerRadius, style: .continuous))
     .overlay {
       RoundedRectangle(cornerRadius: WhyboardTheme.pageCornerRadius, style: .continuous)
-        .stroke(WhyboardTheme.pageBorder, lineWidth: 1)
+        .stroke(WhyboardTheme.pageBorderColor(for: paperStyle), lineWidth: 1)
     }
     .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
     .aspectRatio(WhyboardTheme.pageAspectRatio, contentMode: .fit)
@@ -93,7 +94,7 @@ struct PagePaperView: View {
       Text("PAGE \(pageNumber)")
         .font(.caption2.weight(.semibold))
         .tracking(0.8)
-        .foregroundStyle(Color.black.opacity(0.58))
+        .foregroundStyle(WhyboardTheme.pageControlColor(for: paperStyle))
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
         .background(.thinMaterial, in: Capsule())
@@ -109,7 +110,7 @@ struct PagePaperView: View {
       } label: {
         Image(systemName: "ellipsis")
           .font(.body.weight(.semibold))
-          .foregroundStyle(Color.black.opacity(0.58))
+          .foregroundStyle(WhyboardTheme.pageControlColor(for: paperStyle))
           .frame(width: 34, height: 30)
           .background(.thinMaterial, in: Capsule())
       }

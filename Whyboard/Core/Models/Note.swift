@@ -10,6 +10,7 @@ final class Note {
   var updatedAt: Date
   var lastOpenedAt: Date?
   var lastScrollOffset: Double
+  var paperStyleRawValue: String?
 
   init(
     id: UUID = UUID(),
@@ -18,7 +19,8 @@ final class Note {
     createdAt: Date = Date(),
     updatedAt: Date = Date(),
     lastOpenedAt: Date? = nil,
-    lastScrollOffset: Double = 0
+    lastScrollOffset: Double = 0,
+    paperStyle: NotePaperStyle = .automatic
   ) {
     self.id = id
     self.folderID = folderID
@@ -27,5 +29,16 @@ final class Note {
     self.updatedAt = updatedAt
     self.lastOpenedAt = lastOpenedAt
     self.lastScrollOffset = lastScrollOffset
+    self.paperStyleRawValue = paperStyle == .automatic ? nil : paperStyle.rawValue
+  }
+
+  var paperStyle: NotePaperStyle {
+    get {
+      guard let paperStyleRawValue else { return .automatic }
+      return NotePaperStyle(rawValue: paperStyleRawValue) ?? .automatic
+    }
+    set {
+      paperStyleRawValue = newValue == .automatic ? nil : newValue.rawValue
+    }
   }
 }
