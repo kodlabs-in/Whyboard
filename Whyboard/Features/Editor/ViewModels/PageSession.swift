@@ -20,6 +20,7 @@ final class PageSession {
 
   private let note: Note
   private let drawingRepository: DrawingRepository
+  private let generatesPreview: Bool
   private let saveMetadata: () throws -> Void
   private let onStateChange: () -> Void
   private var hasLoaded = false
@@ -34,12 +35,14 @@ final class PageSession {
     page: Page,
     note: Note,
     drawingRepository: DrawingRepository,
+    generatesPreview: Bool = true,
     saveMetadata: @escaping () throws -> Void,
     onStateChange: @escaping () -> Void
   ) {
     self.page = page
     self.note = note
     self.drawingRepository = drawingRepository
+    self.generatesPreview = generatesPreview
     self.saveMetadata = saveMetadata
     self.onStateChange = onStateChange
   }
@@ -168,6 +171,7 @@ final class PageSession {
   }
 
   private func schedulePreview(_ drawing: PKDrawing, revision: Int64) {
+    guard generatesPreview else { return }
     let pageID = page.id
     let noteID = note.id
     let previews = drawingRepository.previews

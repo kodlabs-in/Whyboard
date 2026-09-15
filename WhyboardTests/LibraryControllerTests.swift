@@ -19,9 +19,31 @@ struct LibraryControllerTests {
     let pages = try context.fetch(FetchDescriptor<Page>())
     #expect(notes.count == 1)
     #expect(notes.first?.folderID == unfiled.id)
+    #expect(notes.first?.kind == .infinitePages)
     #expect(pages.count == 1)
     #expect(pages.first?.noteID == notes.first?.id)
     #expect(createdNoteID == notes.first?.id)
+  }
+
+  @Test func createsAnInfiniteCanvasWithOneDrawingSurface() throws {
+    let container = try makeContainer()
+    let context = container.mainContext
+    let folder = Folder(name: "Ideas")
+    context.insert(folder)
+    let controller = LibraryController()
+
+    let noteID = controller.createNote(
+      in: .folder(folder.id),
+      kind: .infiniteCanvas,
+      folders: [folder],
+      context: context)
+
+    let notes = try context.fetch(FetchDescriptor<Note>())
+    let pages = try context.fetch(FetchDescriptor<Page>())
+    #expect(notes.first?.id == noteID)
+    #expect(notes.first?.kind == .infiniteCanvas)
+    #expect(pages.count == 1)
+    #expect(pages.first?.noteID == noteID)
   }
 
   @Test func movingAndRenamingANotePreservesItsIdentity() throws {
@@ -89,6 +111,17 @@ struct LibraryControllerTests {
 
     note.paperStyle = .automatic
     #expect(note.paperStyleRawValue == nil)
+  }
+
+  @Test func missingOrUnknownNoteKindMigratesToInfinitePages() {
+    let note = Note(folderID: UUID(), kind: .infiniteCanvas)
+    #expect(note.kind == .infiniteCanvas)
+
+    note.noteKindRawValue = nil
+    #expect(note.kind == .infinitePages)
+
+    note.noteKindRawValue = "future-note-kind"
+    #expect(note.kind == .infinitePages)
   }
 
   private func makeContainer() throws -> ModelContainer {

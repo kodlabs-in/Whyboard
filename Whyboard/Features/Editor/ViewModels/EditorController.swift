@@ -32,7 +32,7 @@ final class EditorController {
     self.saveMetadata = saveMetadata
   }
 
-  func session(for page: Page) -> PageSession {
+  func session(for page: Page, generatesPreview: Bool = true) -> PageSession {
     if let session = sessions[page.id] {
       return session
     }
@@ -41,6 +41,7 @@ final class EditorController {
       page: page,
       note: note,
       drawingRepository: drawingRepository,
+      generatesPreview: generatesPreview,
       saveMetadata: { [weak self] in try self?.saveMetadata?() },
       onStateChange: { [weak self] in self?.refreshSaveStatus() })
     sessions[page.id] = session

@@ -17,7 +17,7 @@ struct NoteCard: View {
         .fill(WhyboardTheme.paperColor(for: paperStyle))
         .aspectRatio(1.5, contentMode: .fit)
         .overlay {
-          Image(systemName: "pencil.line")
+          Image(systemName: note.kind.systemImage)
             .font(.title2.weight(.medium))
             .foregroundStyle(WhyboardTheme.pageControlColor(for: paperStyle))
         }
@@ -33,7 +33,7 @@ struct NoteCard: View {
         .lineLimit(2)
 
       HStack(spacing: 6) {
-        Text(pageCount == 1 ? "1 page" : "\(pageCount) pages")
+        Text(note.kind.libraryDetail(pageCount: pageCount))
         Text("•")
         Text(note.updatedAt, format: .relative(presentation: .named))
       }
@@ -46,7 +46,9 @@ struct NoteCard: View {
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("Note, \(note.title), \(pageCount) pages")
+    .accessibilityLabel(
+      "\(note.kind.name) note, \(note.title), \(note.kind.libraryDetail(pageCount: pageCount))"
+    )
     .accessibilityHint("Opens this note")
   }
 }

@@ -22,6 +22,7 @@ final class WhyboardUITests: XCTestCase {
     let newNoteButton = app.buttons["New Note"].firstMatch
     XCTAssertTrue(newNoteButton.waitForExistence(timeout: 3))
     newNoteButton.tap()
+    selectNoteType("new-note-type-infinitePages", in: app)
 
     XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.otherElements["Page 1"].waitForExistence(timeout: 5))
@@ -32,6 +33,28 @@ final class WhyboardUITests: XCTestCase {
 
     XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 5))
     attachScreenshot(named: "Editor with two pages")
+  }
+
+  @MainActor
+  func testCreatesAndZoomsAnInfiniteCanvas() throws {
+    let app = try XCTUnwrap(app)
+    let newNoteButton = app.buttons["New Note"].firstMatch
+    XCTAssertTrue(newNoteButton.waitForExistence(timeout: 5))
+    newNoteButton.tap()
+    selectNoteType("new-note-type-infiniteCanvas", in: app)
+
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.descendants(matching: .any)["infinite-canvas"].waitForExistence(timeout: 5))
+
+    let zoomInButton = app.buttons["canvas-zoom-in"]
+    XCTAssertTrue(zoomInButton.waitForExistence(timeout: 3))
+    zoomInButton.tap()
+
+    let zoomPercentage = app.descendants(matching: .any)["canvas-zoom-percentage"]
+    XCTAssertTrue(zoomPercentage.waitForExistence(timeout: 3))
+    XCTAssertTrue(app.staticTexts["125%"].waitForExistence(timeout: 3))
+    attachScreenshot(named: "Infinite canvas editor")
   }
 
   @MainActor
@@ -77,5 +100,12 @@ final class WhyboardUITests: XCTestCase {
     attachment.name = name
     attachment.lifetime = .keepAlways
     add(attachment)
+  }
+
+  @MainActor
+  private func selectNoteType(_ identifier: String, in app: XCUIApplication) {
+    let noteType = app.buttons[identifier]
+    XCTAssertTrue(noteType.waitForExistence(timeout: 3))
+    noteType.tap()
   }
 }

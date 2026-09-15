@@ -178,15 +178,10 @@ struct NoteEditorView: View {
 
       Button("Arrange Pages", systemImage: "rectangle.3.group", action: showPageOrganizer)
 
-      Menu("Note Options", systemImage: "ellipsis.circle") {
-        Button("Rename Note", systemImage: "pencil", action: presentRename)
-        Picker("Paper Color", selection: paperStyleSelection) {
-          ForEach(NotePaperStyle.allCases) { style in
-            Text(style.name).tag(style)
-          }
-        }
-        Toggle("Draw with Finger", isOn: $drawsWithFinger)
-      }
+      NoteOptionsMenu(
+        paperStyle: paperStyleSelection,
+        drawsWithFinger: $drawsWithFinger,
+        onRename: presentRename)
     }
   }
 

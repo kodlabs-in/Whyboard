@@ -10,6 +10,7 @@ struct LibraryView: View {
 
   @State private var controller = LibraryController()
   @State private var routes: [LibraryRoute] = []
+  @State private var noteCreationRequest: NoteCreationRequest?
 
   let drawingRepository: DrawingRepository
 
@@ -38,6 +39,11 @@ struct LibraryView: View {
     .tint(WhyboardTheme.accent)
     .sheet(item: $controller.nameEditor) { NameEditorSheet(request: $0) }
     .sheet(item: $controller.destinationPicker) { DestinationPickerSheet(request: $0) }
+    .sheet(item: $noteCreationRequest) { request in
+      NewNoteTypeSheet { kind in
+        createNote(in: request.location, kind: kind)
+      }
+    }
     .alert(
       controller.confirmation?.title ?? "Confirm",
       isPresented: $controller.confirmationIsPresented,
@@ -69,13 +75,24 @@ struct LibraryView: View {
       }
     case .note(let noteID):
       if let note = notes.first(where: { $0.id == noteID }) {
-        NoteEditorView(note: note, drawingRepository: drawingRepository)
-          .id(note.id)
+        noteDestination(note)
       } else {
         ContentUnavailableView("Note unavailable", systemImage: "note.text")
       }
     case .settings:
       SettingsView()
+    }
+  }
+
+  @ViewBuilder
+  private func noteDestination(_ note: Note) -> some View {
+    switch note.kind {
+    case .infinitePages:
+      NoteEditorView(note: note, drawingRepository: drawingRepository)
+        .id(note.id)
+    case .infiniteCanvas:
+      InfiniteCanvasEditorView(note: note, drawingRepository: drawingRepository)
+        .id(note.id)
     }
   }
 
@@ -89,7 +106,7 @@ struct LibraryView: View {
       onOpenFolder: { routes.append(.folder($0.id)) },
       onOpenNote: { routes.append(.note($0.id)) },
       onCreateFolder: { presentNewFolder(in: location) },
-      onCreateNote: { createNote(in: location) },
+      onCreateNote: { presentNoteCreation(in: location) },
       onOpenSettings: { routes.append(.settings) },
       onRenameFolder: presentFolderRename,
       onMoveFolder: presentFolderMove,
@@ -115,10 +132,16 @@ struct LibraryView: View {
     controller.confirmFolderDeletion(folder, mutationContext: mutationContext)
   }
 
-  private func createNote(in location: LibraryLocation) {
+  private func presentNoteCreation(in location: LibraryLocation) {
+    noteCreationRequest = NoteCreationRequest(location: location)
+  }
+
+  private func createNote(in location: LibraryLocation, kind: NoteKind) {
+    noteCreationRequest = nil
     guard
       let noteID = controller.createNote(
         in: location,
+        kind: kind,
         folders: folders,
         context: modelContext)
     else { return }
@@ -146,4 +169,9 @@ private enum LibraryRoute: Hashable {
   case folder(UUID)
   case note(UUID)
   case settings
+}
+
+private struct NoteCreationRequest: Identifiable {
+  let id = UUID()
+  let location: LibraryLocation
 }
