@@ -32,6 +32,10 @@ final class EditorController {
 
   func configure(saveMetadata: @escaping () throws -> Void) {
     self.saveMetadata = saveMetadata
+    drawingRepository.pendingSaves.register(noteID: note.id) { [weak self] in
+      guard let self else { return false }
+      return await self.flushAll()
+    }
   }
 
   func session(for page: Page, generatesPreview: Bool = true) -> PageSession {
@@ -86,6 +90,10 @@ final class EditorController {
     activePageID = pageID
   }
 
+  func isPageLoaded(_ pageID: UUID) -> Bool {
+    sessions[pageID]?.isLoaded == true
+  }
+
   func reconcile(pages: [Page]) {
     let existingIDs = Set(pages.map(\.id))
     let removedIDs = Set(sessions.keys).subtracting(existingIDs)
@@ -96,10 +104,18 @@ final class EditorController {
     }
   }
 
-  func flushAll() async {
+  @discardableResult
+  func flushAll() async -> Bool {
+    var didSaveEverything = true
     for session in sessions.values {
-      await session.flush()
+      didSaveEverything = await session.flush() && didSaveEverything
     }
+    return didSaveEverything
+  }
+
+  func close() async {
+    guard await flushAll() else { return }
+    drawingRepository.pendingSaves.unregister(noteID: note.id)
   }
 
   func handleMemoryWarning() {
@@ -230,7 +246,7 @@ final class EditorController {
     let currentDrawing = sessions[page.id]?.isLoaded == true ? sessions[page.id]?.drawing : nil
     let pageID = page.id
     let noteID = note.id
-    let layout = PagePreviewLayout(noteKind: note.kind)
+    let layout = PagePreviewLayout(note: note)
     let drawingRepository = drawingRepository
 
     Task {
@@ -244,6 +260,8 @@ final class EditorController {
         drawing: drawing,
         elements: elements,
         layout: layout,
+        paperStyle: note.paperStyle,
+        background: ImportedPDFBackground(page: page),
         pageID: pageID,
         noteID: noteID,
         revision: revision)

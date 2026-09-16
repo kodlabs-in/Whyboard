@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import Testing
+import UIKit
 
 @testable import Whyboard
 
@@ -110,5 +111,22 @@ struct WorkspaceElementTests {
 
     await repository.delete(filename: filename, noteID: noteID, pageID: pageID)
     #expect(!FileManager.default.fileExists(atPath: storedURL.path))
+  }
+
+  @Test func attachmentImagesAreDecodedAtADeviceSizedResolution() throws {
+    let directories = try AppDirectories.make(isTesting: true)
+    defer { try? FileManager.default.removeItem(at: directories.root) }
+    let source = directories.recovery.appending(path: "large-image.png")
+    let original = UIGraphicsImageRenderer(size: CGSize(width: 1_024, height: 768)).image {
+      UIColor.systemIndigo.setFill()
+      $0.fill(CGRect(x: 0, y: 0, width: 1_024, height: 768))
+    }
+    try #require(original.pngData()).write(to: source, options: .atomic)
+
+    let decoded = try #require(
+      AttachmentImageDecoder.image(at: source, maximumPixelDimension: 256))
+
+    #expect(max(decoded.size.width, decoded.size.height) <= 256)
+    #expect(abs(decoded.size.width / decoded.size.height - 4.0 / 3.0) < 0.001)
   }
 }

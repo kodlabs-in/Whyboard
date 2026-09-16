@@ -12,6 +12,7 @@ struct AppEnvironment {
       Folder.self,
       Note.self,
       Page.self,
+      ImportedDocument.self,
     ])
     let configuration = modelConfiguration(
       schema: schema,

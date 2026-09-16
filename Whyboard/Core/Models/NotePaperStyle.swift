@@ -1,6 +1,6 @@
 import Foundation
 
-enum NotePaperStyle: String, CaseIterable, Identifiable {
+enum NotePaperStyle: String, CaseIterable, Identifiable, Sendable {
   case automatic
   case white
   case cream

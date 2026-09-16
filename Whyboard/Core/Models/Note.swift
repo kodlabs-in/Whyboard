@@ -15,6 +15,7 @@ final class Note {
   var canvasOffsetX: Double?
   var canvasOffsetY: Double?
   var canvasZoomScale: Double?
+  var isFavorite: Bool?
 
   init(
     id: UUID = UUID(),
@@ -25,7 +26,8 @@ final class Note {
     lastOpenedAt: Date? = nil,
     lastScrollOffset: Double = 0,
     paperStyle: NotePaperStyle = .automatic,
-    kind: NoteKind = .infinitePages
+    kind: NoteKind = .infinitePages,
+    isFavorite: Bool? = nil
   ) {
     self.id = id
     self.folderID = folderID
@@ -36,6 +38,7 @@ final class Note {
     self.lastScrollOffset = lastScrollOffset
     self.paperStyleRawValue = paperStyle == .automatic ? nil : paperStyle.rawValue
     self.noteKindRawValue = kind == .infinitePages ? nil : kind.rawValue
+    self.isFavorite = isFavorite
   }
 
   var paperStyle: NotePaperStyle {

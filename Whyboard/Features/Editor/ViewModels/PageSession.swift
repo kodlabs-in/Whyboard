@@ -175,7 +175,7 @@ final class PageSession {
     let pageID = page.id
     let noteID = note.id
     let elements = WorkspaceElementCoding.decode(page.workspaceElementsData)
-    let layout = PagePreviewLayout(noteKind: note.kind)
+    let layout = PagePreviewLayout(note: note)
     let previews = drawingRepository.previews
     previewTask = Task {
       do {
@@ -183,6 +183,8 @@ final class PageSession {
           drawing: drawing,
           elements: elements,
           layout: layout,
+          paperStyle: note.paperStyle,
+          background: ImportedPDFBackground(page: page),
           pageID: pageID,
           noteID: noteID,
           revision: revision)

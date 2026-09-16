@@ -22,6 +22,11 @@ enum DrawingStorageError: LocalizedError, Sendable {
 actor DrawingRepository {
   nonisolated let previews: PreviewRepository
   nonisolated let attachments: AttachmentRepository
+  nonisolated let documents: DocumentRepository
+  nonisolated let pendingSaves: PendingSaveRegistry
+  nonisolated let exportsDirectory: URL
+  nonisolated let backupsDirectory: URL
+  nonisolated let drawingsDirectory: URL
 
   private let directories: AppDirectories
   private let fileManager: FileManager
@@ -30,11 +35,22 @@ actor DrawingRepository {
     self.directories = directories
     self.fileManager = fileManager
     let attachments = AttachmentRepository(directories: directories)
+    let documents = DocumentRepository(directories: directories)
     self.attachments = attachments
-    previews = PreviewRepository(directories: directories, attachments: attachments)
+    self.documents = documents
+    exportsDirectory = directories.exports
+    backupsDirectory = directories.backups
+    drawingsDirectory = directories.drawings
+    previews = PreviewRepository(
+      directories: directories,
+      attachments: attachments,
+      documents: documents)
+    pendingSaves = PendingSaveRegistry()
   }
 
   func preview(for descriptor: PagePreviewDescriptor) async -> UIImage? {
+    let interval = AppSignpost.interval("Preview Render")
+    defer { interval.end() }
     let cachedImage = await previews.preview(
       pageID: descriptor.pageID,
       noteID: descriptor.noteID,
@@ -49,6 +65,8 @@ actor DrawingRepository {
       drawing: drawing,
       elements: descriptor.elements,
       layout: descriptor.layout,
+      paperStyle: descriptor.paperStyle,
+      background: descriptor.background,
       pageID: descriptor.pageID,
       noteID: descriptor.noteID,
       revision: descriptor.revision)
@@ -60,6 +78,8 @@ actor DrawingRepository {
   }
 
   func load(pageID: UUID, noteID: UUID) throws -> PKDrawing {
+    let interval = AppSignpost.interval("Drawing Load")
+    defer { interval.end() }
     let url = drawingURL(pageID: pageID, noteID: noteID)
     guard fileManager.fileExists(atPath: url.path) else { return PKDrawing() }
 
@@ -78,6 +98,8 @@ actor DrawingRepository {
   }
 
   func save(_ drawing: PKDrawing, pageID: UUID, noteID: UUID) throws {
+    let interval = AppSignpost.interval("Drawing Save")
+    defer { interval.end() }
     let noteDirectory = noteDrawingDirectory(noteID: noteID)
     try createDirectory(noteDirectory)
 
@@ -106,6 +128,7 @@ actor DrawingRepository {
     try? fileManager.removeItem(at: noteDrawingDirectory(noteID: noteID))
     await previews.deleteNote(noteID: noteID)
     await attachments.deleteNote(noteID: noteID)
+    await documents.deleteNote(noteID: noteID)
   }
 
   private func drawingURL(pageID: UUID, noteID: UUID) -> URL {

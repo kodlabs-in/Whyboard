@@ -1,6 +1,6 @@
 import Foundation
 
-enum NoteKind: String, CaseIterable, Identifiable {
+enum NoteKind: String, CaseIterable, Identifiable, Sendable {
   case infinitePages
   case infiniteCanvas
 

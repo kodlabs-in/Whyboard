@@ -7,6 +7,7 @@ import UIKit
 struct NoteEditorView: View {
   @Environment(\.modelContext) private var modelContext
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Query private var pages: [Page]
 
   @AppStorage("drawWithFinger", store: AppPreferences.store) private var drawsWithFinger = false
@@ -20,7 +21,12 @@ struct NoteEditorView: View {
   @State private var pageToDelete: Page?
   @State private var showsPageOrganizer = false
   @State private var showsJumpToPage = false
+  @State private var duplicatingPageID: UUID?
   @State private var nameEditor: NameEditorRequest?
+  @State private var exportController = NoteExportController()
+  @State private var noteOpenInterval: AppSignpostInterval?
+  @State private var jumpInterval: AppSignpostInterval?
+  @State private var jumpTargetID: UUID?
 
   let note: Note
   let drawingRepository: DrawingRepository
@@ -46,11 +52,7 @@ struct NoteEditorView: View {
   private var orderedPages: [Page] {
     PageOrdering.ordered(pages)
   }
-
-  private var orderedPageIDs: [UUID] {
-    orderedPages.map(\.id)
-  }
-
+  private var orderedPageIDs: [UUID] { orderedPages.map(\.id) }
   private var resolvedPaperStyle: NotePaperStyle {
     note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
   }
@@ -63,7 +65,7 @@ struct NoteEditorView: View {
             pageView(page, index: index, availableWidth: geometry.size.width)
           }
 
-          addPageButton
+          EditorAddPageButton(action: appendPage)
         }
         .scrollTargetLayout()
         .padding(.horizontal, 24)
@@ -88,6 +90,7 @@ struct NoteEditorView: View {
     .toolbarBackground(.visible, for: .navigationBar)
     .toolbar { editorToolbar }
     .workspaceElementEditing(elementEditingController)
+    .noteExportPresentation(exportController)
     .safeAreaInset(edge: .top) {
       EditorSaveErrorBanner(status: controller.saveStatus) {
         Task { await controller.flushAll() }
@@ -127,7 +130,11 @@ struct NoteEditorView: View {
       Text(controller.errorMessage ?? "Please try again.")
     }
     .onAppear { prepareEditor() }
-    .onDisappear { Task { await controller.flushAll() } }
+    .onDisappear {
+      noteOpenInterval?.end()
+      jumpInterval?.end()
+      Task { await controller.close() }
+    }
     .onChange(of: orderedPageIDs) { _, _ in controller.reconcile(pages: orderedPages) }
     .onChange(of: scenePhase) { _, newPhase in
       guard newPhase != .active else { return }
@@ -159,31 +166,20 @@ struct NoteEditorView: View {
       elementSession: elementSession,
       drawingRepository: drawingRepository,
       toolPickerController: toolPickerController,
+      onReady: { pageBecameReady(page.id) },
       onFocus: { controller.focus(page.id) },
       onElementActivate: { element in
         elementEditingController.activate(element, in: elementSession)
       },
       onInsertBefore: { insertPage(relativeTo: page, after: false) },
       onInsertAfter: { insertPage(relativeTo: page, after: true) },
+      onDuplicate: { duplicatePage(page) },
       onDelete: { pageToDelete = page }
     )
     .frame(width: pageWidth)
     .id(page.id)
     .onAppear { controller.pageAppeared(page.id, orderedPageIDs: orderedPageIDs) }
     .onDisappear { controller.pageDisappeared(page.id, orderedPageIDs: orderedPageIDs) }
-  }
-
-  private var addPageButton: some View {
-    Button(action: appendPage) {
-      Label("Add Page", systemImage: "plus")
-        .font(.headline)
-        .padding(.horizontal, 22)
-        .padding(.vertical, 13)
-    }
-    .buttonStyle(.borderedProminent)
-    .buttonBorderShape(.capsule)
-    .padding(.bottom, 40)
-    .accessibilityHint("Appends a blank page to this note")
   }
 
   @ToolbarContentBuilder
@@ -214,7 +210,11 @@ struct NoteEditorView: View {
       NoteOptionsMenu(
         paperStyle: paperStyleSelection,
         drawsWithFinger: $drawsWithFinger,
-        onRename: presentRename)
+        onRename: presentRename,
+        onDuplicate: duplicateCurrentPage,
+        onExportPDF: exportPDF,
+        onPreviousPage: { movePage(by: -1) },
+        onNextPage: { movePage(by: 1) })
     }
   }
 
@@ -243,6 +243,8 @@ struct NoteEditorView: View {
 
 private extension NoteEditorView {
   private func prepareEditor() {
+    noteOpenInterval?.end()
+    noteOpenInterval = AppSignpost.interval("Note Open")
     controller.configure { try modelContext.save() }
     elementEditingController.configure(
       resolveTarget: elementEditingTarget,
@@ -279,14 +281,80 @@ private extension NoteEditorView {
     scrollToPage(pageID)
   }
 
+  private func duplicatePage(_ page: Page) {
+    guard duplicatingPageID == nil else { return }
+    duplicatingPageID = page.id
+
+    Task {
+      defer { duplicatingPageID = nil }
+      do {
+        let pageID = try await DuplicationService(drawingRepository: drawingRepository)
+          .duplicatePage(page, in: pages, note: note, context: modelContext)
+        scrollToPage(pageID)
+      } catch {
+        controller.errorMessage = error.localizedDescription
+      }
+    }
+  }
+
   private func scrollToPage(_ pageID: UUID) {
+    jumpInterval?.end()
+    jumpInterval = AppSignpost.interval("Jump to Page")
+    jumpTargetID = pageID
     controller.focus(pageID)
     Task {
       try? await Task.sleep(for: .milliseconds(120))
-      withAnimation(.smooth) {
+      if reduceMotion {
         scrollPosition.scrollTo(id: pageID, anchor: .center)
+      } else {
+        withAnimation(.smooth) {
+          scrollPosition.scrollTo(id: pageID, anchor: .center)
+        }
+      }
+      if let pageIndex = orderedPages.firstIndex(where: { $0.id == pageID }) {
+        UIAccessibility.post(
+          notification: .announcement,
+          argument: "Page \(pageIndex + 1) of \(orderedPages.count)")
+      }
+      if controller.isPageLoaded(pageID) {
+        finishJump(to: pageID)
       }
     }
+  }
+
+  private func pageBecameReady(_ pageID: UUID) {
+    noteOpenInterval?.end()
+    noteOpenInterval = nil
+    finishJump(to: pageID)
+  }
+
+  private func finishJump(to pageID: UUID) {
+    guard jumpTargetID == pageID else { return }
+    jumpInterval?.end()
+    jumpInterval = nil
+    jumpTargetID = nil
+  }
+
+  private func duplicateCurrentPage() {
+    let pageID = controller.activePageID ?? orderedPages.first?.id
+    guard let page = orderedPages.first(where: { $0.id == pageID }) else { return }
+    duplicatePage(page)
+  }
+
+  private func movePage(by offset: Int) {
+    guard !orderedPages.isEmpty else { return }
+    let currentID = controller.activePageID ?? orderedPages.first?.id
+    let currentIndex = orderedPages.firstIndex { $0.id == currentID } ?? 0
+    let targetIndex = min(max(currentIndex + offset, 0), orderedPages.count - 1)
+    scrollToPage(orderedPages[targetIndex].id)
+  }
+
+  private func exportPDF() {
+    exportController.export(
+      note: note,
+      pages: orderedPages,
+      defaultPaperStyle: resolvedPaperStyle,
+      drawingRepository: drawingRepository)
   }
 
   private func deletePage(_ page: Page) {

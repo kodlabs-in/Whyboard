@@ -54,6 +54,33 @@ actor AttachmentRepository {
     pageDirectory(noteID: noteID, pageID: pageID).appending(path: filename)
   }
 
+  func copyFiles(
+    _ filenames: Set<String>,
+    fromNoteID: UUID,
+    fromPageID: UUID,
+    toNoteID: UUID,
+    toPageID: UUID
+  ) throws {
+    guard !filenames.isEmpty else { return }
+    guard filenames.allSatisfy(isSafeFilename) else {
+      throw AttachmentStorageError.importFailed
+    }
+
+    let destination = pageDirectory(noteID: toNoteID, pageID: toPageID)
+    do {
+      try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+      for filename in filenames {
+        try copyFile(
+          filename,
+          fromNoteID: fromNoteID,
+          fromPageID: fromPageID,
+          to: destination)
+      }
+    } catch {
+      throw AttachmentStorageError.importFailed
+    }
+  }
+
   func delete(filename: String, noteID: UUID, pageID: UUID) {
     try? fileManager.removeItem(
       at: fileURL(noteID: noteID, pageID: pageID, filename: filename))
@@ -75,5 +102,27 @@ actor AttachmentRepository {
   private nonisolated func noteDirectory(noteID: UUID) -> URL {
     rootDirectory
       .appending(path: noteID.uuidString.lowercased(), directoryHint: .isDirectory)
+  }
+
+  private func copyFile(
+    _ filename: String,
+    fromNoteID: UUID,
+    fromPageID: UUID,
+    to destination: URL
+  ) throws {
+    let source = fileURL(noteID: fromNoteID, pageID: fromPageID, filename: filename)
+    guard fileManager.fileExists(atPath: source.path) else {
+      throw AttachmentStorageError.importFailed
+    }
+    try fileManager.copyItem(
+      at: source,
+      to: destination.appending(path: filename))
+  }
+
+  private nonisolated func isSafeFilename(_ filename: String) -> Bool {
+    let reservedNames: Set<String> = [".", ".."]
+    return !filename.isEmpty
+      && !reservedNames.contains(filename)
+      && URL(fileURLWithPath: filename).lastPathComponent == filename
   }
 }

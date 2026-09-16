@@ -11,6 +11,8 @@ final class Page {
   var createdAt: Date
   var updatedAt: Date
   var workspaceElementsData: Data?
+  var importedDocumentID: UUID?
+  var importedDocumentPageIndex: Int?
 
   init(
     id: UUID = UUID(),

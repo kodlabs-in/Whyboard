@@ -103,6 +103,9 @@ extension LibraryController {
     mutationContext.pages
       .filter { deletedNoteIDs.contains($0.noteID) }
       .forEach(mutationContext.modelContext.delete)
+    mutationContext.importedDocuments
+      .filter { deletedNoteIDs.contains($0.noteID) }
+      .forEach(mutationContext.modelContext.delete)
     deletedNotes.forEach(mutationContext.modelContext.delete)
     mutationContext.folders
       .filter { folderIDs.contains($0.id) }

@@ -1,13 +1,13 @@
 import CoreGraphics
 import Foundation
 
-enum WorkspaceElementKind: String, Codable, CaseIterable, Sendable {
+nonisolated enum WorkspaceElementKind: String, Codable, CaseIterable, Sendable {
   case text
   case shape
   case image
 }
 
-enum WorkspaceShapeKind: String, Codable, CaseIterable, Identifiable, Sendable {
+nonisolated enum WorkspaceShapeKind: String, Codable, CaseIterable, Identifiable, Sendable {
   case rectangle
   case ellipse
   case triangle
@@ -31,7 +31,7 @@ enum WorkspaceShapeKind: String, Codable, CaseIterable, Identifiable, Sendable {
   }
 }
 
-enum WorkspaceElementColor: String, Codable, CaseIterable, Identifiable, Sendable {
+nonisolated enum WorkspaceElementColor: String, Codable, CaseIterable, Identifiable, Sendable {
   case graphite
   case indigo
   case blue
@@ -47,7 +47,7 @@ enum WorkspaceElementColor: String, Codable, CaseIterable, Identifiable, Sendabl
   var name: String { rawValue.capitalized }
 }
 
-struct WorkspaceElementFrame: Codable, Equatable, Sendable {
+nonisolated struct WorkspaceElementFrame: Codable, Equatable, Sendable {
   var centerX: Double
   var centerY: Double
   var width: Double
@@ -135,7 +135,7 @@ struct WorkspaceElementFrame: Codable, Equatable, Sendable {
   }
 }
 
-struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable {
+nonisolated struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable {
   let id: UUID
   var kind: WorkspaceElementKind
   var frame: WorkspaceElementFrame
@@ -185,7 +185,7 @@ struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable {
   }
 }
 
-enum WorkspaceElementCoding {
+nonisolated enum WorkspaceElementCoding {
   static func decode(_ data: Data?) -> [WorkspaceElement] {
     guard let data else { return [] }
     let decoded = try? JSONDecoder().decode([LossyWorkspaceElement].self, from: data)
@@ -198,10 +198,23 @@ enum WorkspaceElementCoding {
   }
 }
 
-private struct LossyWorkspaceElement: Decodable {
+private nonisolated struct LossyWorkspaceElement: Decodable {
   let value: WorkspaceElement?
 
   init(from decoder: Decoder) throws {
     value = try? WorkspaceElement(from: decoder)
+  }
+}
+
+extension WorkspaceElement {
+  nonisolated var previewBounds: CGRect {
+    let unrotated = CGRect(
+      x: -frame.size.width / 2,
+      y: -frame.size.height / 2,
+      width: frame.size.width,
+      height: frame.size.height)
+    let transform = CGAffineTransform(translationX: frame.center.x, y: frame.center.y)
+      .rotated(by: CGFloat(frame.rotationDegrees * .pi / 180))
+    return unrotated.applying(transform)
   }
 }

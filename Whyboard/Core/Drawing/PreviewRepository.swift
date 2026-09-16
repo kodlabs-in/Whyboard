@@ -25,15 +25,18 @@ actor PreviewRepository {
   init(
     directories: AppDirectories,
     attachments: AttachmentRepository,
+    documents: DocumentRepository,
     fileManager: FileManager = .default
   ) {
     self.directories = directories
     self.fileManager = fileManager
-    renderer = PagePreviewRenderer(attachments: attachments)
+    renderer = PagePreviewRenderer(attachments: attachments, documents: documents)
     imageCache.totalCostLimit = 64 * 1_024 * 1_024
   }
 
   func preview(pageID: UUID, noteID: UUID, revision: Int64) -> UIImage? {
+    let interval = AppSignpost.interval("Preview Decode")
+    defer { interval.end() }
     let key = PreviewKey(noteID: noteID, pageID: pageID)
     let cacheKey = cacheKey(pageID: pageID, noteID: noteID, revision: revision)
     if let image = imageCache.object(forKey: cacheKey as NSString) {
@@ -50,6 +53,8 @@ actor PreviewRepository {
     drawing: PKDrawing,
     elements: [WorkspaceElement] = [],
     layout: PagePreviewLayout = .page,
+    paperStyle: NotePaperStyle = .white,
+    background: ImportedPDFBackground? = nil,
     pageID: UUID,
     noteID: UUID,
     revision: Int64
@@ -59,7 +64,12 @@ actor PreviewRepository {
     let noteDirectory = notePreviewDirectory(noteID: noteID)
     try createDirectory(noteDirectory)
     let image = renderer.render(
-      PagePreviewSnapshot(drawing: drawing, elements: elements, layout: layout),
+      PagePreviewSnapshot(
+        drawing: drawing,
+        elements: elements,
+        layout: layout,
+        paperStyle: paperStyle,
+        background: background),
       noteID: noteID,
       pageID: pageID)
     let data = try encodedPreview(for: image)

@@ -1,15 +1,17 @@
-import XCTest
+@preconcurrency import XCTest
 
 final class WhyboardUITests: XCTestCase {
-  private var app: XCUIApplication?
+  nonisolated(unsafe) private var app: XCUIApplication?
 
   override func setUpWithError() throws {
     continueAfterFailure = false
-    XCUIDevice.shared.orientation = .landscapeLeft
-    let app = XCUIApplication()
-    app.launchArguments = ["-ui-testing"]
-    app.launch()
-    self.app = app
+    app = MainActor.assumeIsolated {
+      XCUIDevice.shared.orientation = .landscapeLeft
+      let application = XCUIApplication()
+      application.launchArguments = ["-ui-testing"]
+      application.launch()
+      return application
+    }
   }
 
   @MainActor
@@ -49,6 +51,56 @@ final class WhyboardUITests: XCTestCase {
     app.buttons["jump-to-page-go"].tap()
     XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 3))
     attachScreenshot(named: "Editor with two pages")
+  }
+
+  @MainActor
+  func testDuplicatesAPageAndItsNote() throws {
+    let app = try XCTUnwrap(app)
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infinitePages", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+
+    let pageActions = app.buttons["Page 1 actions"]
+    XCTAssertTrue(pageActions.waitForExistence(timeout: 3))
+    pageActions.tap()
+    let duplicatePage = app.buttons["Duplicate Page"]
+    XCTAssertTrue(duplicatePage.waitForExistence(timeout: 3))
+    duplicatePage.tap()
+    XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 5))
+
+    app.navigationBars["Untitled Note"].buttons.element(boundBy: 0).tap()
+    let originalTitle = app.staticTexts["Untitled Note"].firstMatch
+    XCTAssertTrue(originalTitle.waitForExistence(timeout: 5))
+    originalTitle.press(forDuration: 1)
+    let duplicateNote = app.buttons["Duplicate"]
+    XCTAssertTrue(duplicateNote.waitForExistence(timeout: 3))
+    duplicateNote.tap()
+
+    let copyTitle = app.staticTexts["Untitled Note Copy"]
+    XCTAssertTrue(copyTitle.waitForExistence(timeout: 5))
+    copyTitle.tap()
+    XCTAssertTrue(app.navigationBars["Untitled Note Copy"].waitForExistence(timeout: 5))
+    app.buttons["Arrange Pages"].tap()
+    XCTAssertTrue(app.buttons["page-organizer-page-1"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["page-organizer-page-2"].waitForExistence(timeout: 3))
+    attachScreenshot(named: "Duplicated note pages")
+  }
+
+  @MainActor
+  func testFavoritesAndRecentsAppearOnLibraryHome() throws {
+    let app = try XCTUnwrap(app)
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infinitePages", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+    app.navigationBars["Untitled Note"].buttons.element(boundBy: 0).tap()
+
+    XCTAssertTrue(app.staticTexts["Recent"].waitForExistence(timeout: 5))
+    let favoriteButton = app.buttons["Add to Favorites"].firstMatch
+    XCTAssertTrue(favoriteButton.waitForExistence(timeout: 3))
+    favoriteButton.tap()
+    XCTAssertTrue(app.staticTexts["Favorites"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["Remove from Favorites"].firstMatch.exists)
+    attachScreenshot(named: "Favorites and recent notes")
   }
 
   @MainActor
@@ -147,6 +199,48 @@ final class WhyboardUITests: XCTestCase {
     app.buttons["Black"].tap()
     XCTAssertTrue(app.staticTexts["Black"].waitForExistence(timeout: 3))
     attachScreenshot(named: "Settings paper selection")
+  }
+
+  @MainActor
+  func testSelectModeSelectsAndClearsANote() throws {
+    let app = try XCTUnwrap(app)
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infinitePages", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+    app.navigationBars["Untitled Note"].buttons.element(boundBy: 0).tap()
+
+    let selectMode = app.buttons["library-select-mode"]
+    XCTAssertTrue(selectMode.waitForExistence(timeout: 3))
+    selectMode.tap()
+    app.staticTexts["Untitled Note"].firstMatch.tap()
+    XCTAssertTrue(app.staticTexts["1 selected"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["Move"].exists)
+    XCTAssertTrue(app.buttons["Delete"].exists)
+    attachScreenshot(named: "Library select mode")
+
+    app.buttons["Cancel"].tap()
+    XCTAssertFalse(app.staticTexts["1 selected"].exists)
+  }
+
+  @MainActor
+  func testDocumentAndBackupActionsAreAccessible() throws {
+    let app = try XCTUnwrap(app)
+    XCTAssertTrue(app.buttons["Import PDF"].waitForExistence(timeout: 5))
+
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infinitePages", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+    app.navigationBars["Untitled Note"].buttons.element(boundBy: 0).tap()
+    app.staticTexts["Untitled Note"].firstMatch.press(forDuration: 1)
+    XCTAssertTrue(app.buttons["Export PDF"].waitForExistence(timeout: 3))
+    app.tap()
+
+    app.buttons["Settings"].tap()
+    XCTAssertTrue(app.buttons["create-backup"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.staticTexts["⌘P"].exists)
+    app.swipeUp()
+    XCTAssertTrue(app.buttons["restore-backup"].waitForExistence(timeout: 3))
+    attachScreenshot(named: "Document and backup actions")
   }
 
   @MainActor

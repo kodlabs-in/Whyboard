@@ -5,6 +5,7 @@ struct DestinationPickerRequest: Identifiable {
   let title: String
   let destinations: [FolderDestination]
   let currentFolderID: UUID?
+  var allowsCurrentDestination = false
   let onSelect: (Folder?) -> Void
 }
 
@@ -23,7 +24,9 @@ struct DestinationPickerSheet: View {
           destinationRow(destination)
         }
         .buttonStyle(.plain)
-        .disabled(destination.folder?.id == request.currentFolderID)
+        .disabled(
+          !request.allowsCurrentDestination
+            && destination.folder?.id == request.currentFolderID)
       }
       .navigationTitle(request.title)
       .navigationBarTitleDisplayMode(.inline)

@@ -49,7 +49,10 @@ struct PageThumbnailView: View {
         .fill(WhyboardTheme.paperColor(for: paperStyle))
 
       PagePreviewView(
-        descriptor: PagePreviewDescriptor(page: page, noteKind: note.kind),
+        descriptor: PagePreviewDescriptor(
+          page: page,
+          note: note,
+          paperStyle: paperStyle),
         drawingRepository: drawingRepository,
         placeholderSystemImage: "doc.plaintext",
         placeholderColor: WhyboardTheme.pageControlColor(for: paperStyle)

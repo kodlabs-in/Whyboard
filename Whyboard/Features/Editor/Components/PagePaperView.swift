@@ -13,10 +13,12 @@ struct PagePaperView: View {
   let elementSession: ElementSession
   let drawingRepository: DrawingRepository
   let toolPickerController: ToolPickerController
+  let onReady: () -> Void
   let onFocus: () -> Void
   let onElementActivate: (WorkspaceElement) -> Void
   let onInsertBefore: () -> Void
   let onInsertAfter: () -> Void
+  let onDuplicate: () -> Void
   let onDelete: () -> Void
 
   @State private var preview: UIImage?
@@ -45,8 +47,13 @@ struct PagePaperView: View {
     .accessibilityLabel("Page \(pageNumber)")
     .task(id: previewTaskID) {
       if isLive {
+        let interval = AppSignpost.interval("Page Activation")
+        defer { interval.end() }
         preview = nil
         await session.loadIfNeeded()
+        if session.isLoaded {
+          onReady()
+        }
       } else {
         preview = await drawingRepository.previews.preview(
           pageID: page.id,
@@ -96,6 +103,8 @@ struct PagePaperView: View {
         contentOffset: .zero)
 
       ZStack {
+        importedPDFBackground
+
         if interactionMode == .arrange {
           Color.clear
             .contentShape(Rectangle())
@@ -127,6 +136,24 @@ struct PagePaperView: View {
     }
   }
 
+  @ViewBuilder
+  private var importedPDFBackground: some View {
+    if let background = importedBackgroundReference {
+      ImportedPDFPageView(
+        noteID: page.noteID,
+        documentID: background.documentID,
+        pageIndex: background.pageIndex,
+        documents: drawingRepository.documents
+      )
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+    }
+  }
+
+  private var importedBackgroundReference: ImportedPDFBackground? {
+    ImportedPDFBackground(page: page)
+  }
+
   private var dormantPageContent: some View {
     GeometryReader { geometry in
       let transform = WorkspaceTransform(
@@ -140,6 +167,7 @@ struct PagePaperView: View {
             .scaledToFit()
             .accessibilityHidden(true)
         } else {
+          importedPDFBackground
           elementVisualLayer(transform: transform)
         }
       }
@@ -173,6 +201,7 @@ struct PagePaperView: View {
       Menu {
         Button("Insert Before", systemImage: "arrow.up.doc") { onInsertBefore() }
         Button("Insert After", systemImage: "arrow.down.doc") { onInsertAfter() }
+        Button("Duplicate Page", systemImage: "plus.square.on.square", action: onDuplicate)
         Divider()
         Button("Delete Page", systemImage: "trash", role: .destructive) { onDelete() }
           .disabled(pageCount == 1)

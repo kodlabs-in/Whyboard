@@ -55,6 +55,7 @@ extension LibraryController {
   func confirmNoteDeletion(
     _ note: Note,
     pages: [Page],
+    importedDocuments: [ImportedDocument] = [],
     context: ModelContext,
     drawingRepository: DrawingRepository
   ) {
@@ -66,6 +67,7 @@ extension LibraryController {
       self?.deleteNote(
         note,
         pages: pages,
+        importedDocuments: importedDocuments,
         context: context,
         drawingRepository: drawingRepository)
     }
@@ -78,10 +80,12 @@ extension LibraryController {
   private func deleteNote(
     _ note: Note,
     pages: [Page],
+    importedDocuments: [ImportedDocument],
     context: ModelContext,
     drawingRepository: DrawingRepository
   ) {
     pages.filter { $0.noteID == note.id }.forEach(context.delete)
+    importedDocuments.filter { $0.noteID == note.id }.forEach(context.delete)
     context.delete(note)
     save(context)
 

@@ -8,12 +8,63 @@ struct NoteCard: View {
   let pageCount: Int
   let previewPage: Page?
   let drawingRepository: DrawingRepository
+  var isSelecting = false
+  var isSelected = false
+  let onOpen: () -> Void
+  let onToggleFavorite: () -> Void
 
   private var paperStyle: NotePaperStyle {
     note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
   }
 
   var body: some View {
+    ZStack(alignment: .topTrailing) {
+      Button(action: onOpen) {
+        cardContent
+      }
+      .buttonStyle(.plain)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(
+        "\(note.kind.name) note, \(note.title), \(note.kind.libraryDetail(pageCount: pageCount))"
+      )
+      .accessibilityHint(accessibilityHint)
+      .accessibilityValue(isSelecting ? (isSelected ? "Selected" : "Not selected") : "")
+      .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+      if isSelecting {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+          .font(.title2)
+          .foregroundStyle(isSelected ? WhyboardTheme.accent : .secondary)
+          .background(.background, in: Circle())
+          .padding(24)
+          .accessibilityHidden(true)
+      } else {
+        Button(action: onToggleFavorite) {
+          Image(systemName: note.isFavorite == true ? "star.fill" : "star")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(note.isFavorite == true ? .yellow : .secondary)
+            .frame(width: 34, height: 34)
+            .background(.regularMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(24)
+        .accessibilityLabel(note.isFavorite == true ? "Remove from Favorites" : "Add to Favorites")
+      }
+    }
+    .overlay {
+      if isSelecting, isSelected {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+          .stroke(WhyboardTheme.accent, lineWidth: 3)
+      }
+    }
+  }
+
+  private var accessibilityHint: String {
+    guard isSelecting else { return "Opens this note" }
+    return isSelected ? "Double tap to deselect" : "Double tap to select"
+  }
+
+  private var cardContent: some View {
     VStack(alignment: .leading, spacing: 14) {
       RoundedRectangle(cornerRadius: 10, style: .continuous)
         .fill(WhyboardTheme.paperColor(for: paperStyle))
@@ -21,7 +72,10 @@ struct NoteCard: View {
         .overlay {
           if let previewPage {
             PagePreviewView(
-              descriptor: PagePreviewDescriptor(page: previewPage, noteKind: note.kind),
+              descriptor: PagePreviewDescriptor(
+                page: previewPage,
+                note: note,
+                paperStyle: paperStyle),
               drawingRepository: drawingRepository,
               placeholderSystemImage: note.kind.systemImage,
               placeholderColor: WhyboardTheme.pageControlColor(for: paperStyle)
@@ -57,10 +111,5 @@ struct NoteCard: View {
     .padding(14)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(
-      "\(note.kind.name) note, \(note.title), \(note.kind.libraryDetail(pageCount: pageCount))"
-    )
-    .accessibilityHint("Opens this note")
   }
 }

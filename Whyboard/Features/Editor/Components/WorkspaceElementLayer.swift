@@ -177,9 +177,10 @@ private struct WorkspaceImageView: View {
 
   private func loadImage() async {
     guard let url else { return }
-    let data = await Task.detached(priority: .userInitiated) { try? Data(contentsOf: url) }.value
-    guard let data else { return }
-    guard let loadedImage = UIImage(data: data), loadedImage.size.height > 0 else { return }
+    guard
+      let loadedImage = await AttachmentImageCache.shared.image(at: url),
+      loadedImage.size.height > 0
+    else { return }
     image = loadedImage
     onAspectRatio(Double(loadedImage.size.width / loadedImage.size.height))
   }

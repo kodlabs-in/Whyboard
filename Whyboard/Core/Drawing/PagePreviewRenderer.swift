@@ -1,18 +1,37 @@
 import CoreGraphics
+import PDFKit
 import PencilKit
 import UIKit
 
 enum PagePreviewLayout: Equatable, Sendable {
   case page
-  case infiniteCanvas(contentSize: CGSize)
+  case infiniteCanvas(contentSize: CGSize, emptyViewport: CGRect)
 
   init(noteKind: NoteKind) {
     switch noteKind {
     case .infinitePages:
       self = .page
     case .infiniteCanvas:
-      self = .infiniteCanvas(contentSize: InfiniteCanvasMetrics.contentSize)
+      self = .infiniteCanvas(
+        contentSize: InfiniteCanvasMetrics.contentSize,
+        emptyViewport: Self.defaultCanvasViewport)
     }
+  }
+
+  init(note: Note) {
+    guard note.kind == .infiniteCanvas else {
+      self = .page
+      return
+    }
+    let zoom = max(note.canvasZoomScale ?? 1, Double(InfiniteCanvasMetrics.minimumZoomScale))
+    let viewport = CGRect(
+      x: note.canvasOffsetX ?? Self.defaultCanvasViewport.minX,
+      y: note.canvasOffsetY ?? Self.defaultCanvasViewport.minY,
+      width: 1_200 / zoom,
+      height: 800 / zoom)
+    self = .infiniteCanvas(
+      contentSize: InfiniteCanvasMetrics.contentSize,
+      emptyViewport: viewport)
   }
 
   nonisolated func sourceBounds(
@@ -22,29 +41,36 @@ enum PagePreviewLayout: Equatable, Sendable {
     switch self {
     case .page:
       CGRect(origin: .zero, size: CanonicalPage.size)
-    case .infiniteCanvas(let contentSize):
-      infiniteCanvasBounds(drawing: drawing, elements: elements, contentSize: contentSize)
+    case .infiniteCanvas(let contentSize, let emptyViewport):
+      infiniteCanvasBounds(
+        drawing: drawing,
+        elements: elements,
+        contentSize: contentSize,
+        emptyViewport: emptyViewport)
     }
   }
 
   private nonisolated func infiniteCanvasBounds(
     drawing: PKDrawing,
     elements: [WorkspaceElement],
-    contentSize: CGSize
+    contentSize: CGSize,
+    emptyViewport: CGRect
   ) -> CGRect {
     let contentBounds = CGRect(origin: .zero, size: contentSize)
     let occupiedBounds = elements.reduce(drawing.bounds) { bounds, element in
       bounds.union(element.previewBounds)
     }
     guard !occupiedBounds.isNull, !occupiedBounds.isEmpty else {
-      return CGRect(
-        x: contentSize.width / 2 - 600,
-        y: contentSize.height / 2 - 400,
-        width: 1_200,
-        height: 800)
+      return emptyViewport.intersection(contentBounds)
     }
     return occupiedBounds.insetBy(dx: -80, dy: -80).intersection(contentBounds)
   }
+
+  private static let defaultCanvasViewport = CGRect(
+    x: InfiniteCanvasMetrics.contentSize.width / 2 - 600,
+    y: InfiniteCanvasMetrics.contentSize.height / 2 - 400,
+    width: 1_200,
+    height: 800)
 }
 
 struct PagePreviewDescriptor: Equatable, Sendable {
@@ -53,13 +79,31 @@ struct PagePreviewDescriptor: Equatable, Sendable {
   let revision: Int64
   let elements: [WorkspaceElement]
   let layout: PagePreviewLayout
+  let paperStyle: NotePaperStyle
+  let background: ImportedPDFBackground?
 
-  init(page: Page, noteKind: NoteKind) {
+  init(
+    page: Page,
+    noteKind: NoteKind,
+    paperStyle: NotePaperStyle = .white
+  ) {
     noteID = page.noteID
     pageID = page.id
     revision = page.contentRevision
     elements = WorkspaceElementCoding.decode(page.workspaceElementsData)
     layout = PagePreviewLayout(noteKind: noteKind)
+    self.paperStyle = paperStyle == .automatic ? .white : paperStyle
+    background = ImportedPDFBackground(page: page)
+  }
+
+  init(page: Page, note: Note, paperStyle: NotePaperStyle = .white) {
+    noteID = page.noteID
+    pageID = page.id
+    revision = page.contentRevision
+    elements = WorkspaceElementCoding.decode(page.workspaceElementsData)
+    layout = PagePreviewLayout(note: note)
+    self.paperStyle = paperStyle == .automatic ? .white : paperStyle
+    background = ImportedPDFBackground(page: page)
   }
 
   var taskID: String {
@@ -71,10 +115,26 @@ struct PagePreviewSnapshot: Sendable {
   let drawing: PKDrawing
   let elements: [WorkspaceElement]
   let layout: PagePreviewLayout
+  let paperStyle: NotePaperStyle
+  let background: ImportedPDFBackground?
+}
+
+struct ImportedPDFBackground: Equatable, Sendable {
+  let documentID: UUID
+  let pageIndex: Int
+
+  init?(page: Page) {
+    guard
+      let documentID = page.importedDocumentID,
+      let pageIndex = page.importedDocumentPageIndex
+    else { return nil }
+    self.documentID = documentID
+    self.pageIndex = pageIndex
+  }
 }
 
 nonisolated struct PagePreviewRenderer: Sendable {
-  static let version = 2
+  static let version = 3
 
   private static let maximumPixelDimension: CGFloat = 640
   private static let openShapes: Set<WorkspaceShapeKind> = [.line, .arrow]
@@ -120,6 +180,7 @@ nonisolated struct PagePreviewRenderer: Sendable {
   ]
 
   let attachments: AttachmentRepository
+  let documents: DocumentRepository
 
   func render(_ snapshot: PagePreviewSnapshot, noteID: UUID, pageID: UUID) -> UIImage {
     let bounds = snapshot.layout.sourceBounds(
@@ -133,9 +194,48 @@ nonisolated struct PagePreviewRenderer: Sendable {
 
     return UIGraphicsImageRenderer(size: outputSize, format: format).image { context in
       configure(context.cgContext, sourceBounds: bounds, outputScale: outputScale)
-      drawElements(snapshot.elements, noteID: noteID, pageID: pageID)
-      draw(snapshot.drawing, in: bounds, scale: outputScale)
+      drawLayers(
+        snapshot,
+        noteID: noteID,
+        pageID: pageID,
+        sourceBounds: bounds,
+        drawingScale: outputScale)
     }
+  }
+
+  func drawForExport(
+    _ snapshot: PagePreviewSnapshot,
+    noteID: UUID,
+    pageID: UUID,
+    in context: CGContext,
+    outputSize: CGSize
+  ) {
+    let sourceBounds = snapshot.layout.sourceBounds(
+      drawing: snapshot.drawing,
+      elements: snapshot.elements)
+    let scale = min(
+      outputSize.width / sourceBounds.width,
+      outputSize.height / sourceBounds.height)
+    let fittedSize = CGSize(
+      width: sourceBounds.width * scale,
+      height: sourceBounds.height * scale)
+    let offset = CGPoint(
+      x: (outputSize.width - fittedSize.width) / 2,
+      y: (outputSize.height - fittedSize.height) / 2)
+
+    context.saveGState()
+    context.translateBy(x: offset.x, y: offset.y)
+    context.scaleBy(x: scale, y: scale)
+    context.translateBy(x: -sourceBounds.minX, y: -sourceBounds.minY)
+    UIGraphicsPushContext(context)
+    drawLayers(
+      snapshot,
+      noteID: noteID,
+      pageID: pageID,
+      sourceBounds: sourceBounds,
+      drawingScale: scale)
+    UIGraphicsPopContext()
+    context.restoreGState()
   }
 
   private func configure(
@@ -155,6 +255,44 @@ nonisolated struct PagePreviewRenderer: Sendable {
     for element in elements.sorted(by: { $0.zIndex < $1.zIndex }) {
       draw(element, noteID: noteID, pageID: pageID)
     }
+  }
+
+  private func drawLayers(
+    _ snapshot: PagePreviewSnapshot,
+    noteID: UUID,
+    pageID: UUID,
+    sourceBounds: CGRect,
+    drawingScale: CGFloat
+  ) {
+    Self.paperColor(snapshot.paperStyle).setFill()
+    UIRectFill(sourceBounds)
+    drawPDFBackground(snapshot.background, noteID: noteID, in: sourceBounds)
+    drawElements(snapshot.elements, noteID: noteID, pageID: pageID)
+    draw(snapshot.drawing, in: sourceBounds, scale: drawingScale)
+  }
+
+  private func drawPDFBackground(
+    _ background: ImportedPDFBackground?,
+    noteID: UUID,
+    in bounds: CGRect
+  ) {
+    guard
+      let background,
+      let document = PDFDocument(
+        url: documents.fileURL(noteID: noteID, documentID: background.documentID)),
+      let page = document.page(at: background.pageIndex),
+      let context = UIGraphicsGetCurrentContext()
+    else { return }
+    let source = page.bounds(for: .mediaBox)
+    let destination = Self.aspectFit(source.size, inside: bounds)
+    context.saveGState()
+    context.translateBy(x: destination.minX, y: destination.maxY)
+    context.scaleBy(
+      x: destination.width / source.width,
+      y: -destination.height / source.height)
+    context.translateBy(x: -source.minX, y: -source.minY)
+    page.draw(with: .mediaBox, to: context)
+    context.restoreGState()
   }
 
   private func draw(_ element: WorkspaceElement, noteID: UUID, pageID: UUID) {
@@ -214,7 +352,11 @@ nonisolated struct PagePreviewRenderer: Sendable {
   ) {
     guard let filename = element.assetFilename else { return }
     let url = attachments.fileURL(noteID: noteID, pageID: pageID, filename: filename)
-    guard let image = UIImage(contentsOfFile: url.path) else { return }
+    guard
+      let image = AttachmentImageDecoder.image(
+        at: url,
+        maximumPixelDimension: 2_048)
+    else { return }
     UIBezierPath(roundedRect: bounds, cornerRadius: 14).addClip()
     image.draw(in: Self.aspectFit(image.size, inside: bounds))
   }
@@ -247,17 +389,5 @@ nonisolated struct PagePreviewRenderer: Sendable {
   private static func color(for color: WorkspaceElementColor) -> UIColor {
     colors[color, default: .systemIndigo]
   }
-}
 
-private extension WorkspaceElement {
-  nonisolated var previewBounds: CGRect {
-    let unrotated = CGRect(
-      x: -frame.size.width / 2,
-      y: -frame.size.height / 2,
-      width: frame.size.width,
-      height: frame.size.height)
-    let transform = CGAffineTransform(translationX: frame.center.x, y: frame.center.y)
-      .rotated(by: CGFloat(frame.rotationDegrees * .pi / 180))
-    return unrotated.applying(transform)
-  }
 }
