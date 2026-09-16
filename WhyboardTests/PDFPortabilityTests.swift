@@ -7,6 +7,14 @@ import UIKit
 
 @MainActor
 struct PDFPortabilityTests {
+  @Test func importedPDFPageUsesPDFKitWithoutBackgroundUIViewDrawing() {
+    let view = ImportedPDFPageUIView()
+    #expect(
+      ObjectIdentifier(ImportedPDFPageUIView.layerClass)
+        == ObjectIdentifier(CALayer.self))
+    #expect(view.subviews.contains { $0 is PDFView })
+  }
+
   @Test func importPublishesOneStablePagePerPDFPageAndKeepsSourceUnchanged() async throws {
     let container = try makeContainer()
     let context = container.mainContext

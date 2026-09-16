@@ -114,6 +114,7 @@ final class WhyboardUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
     XCTAssertTrue(
       app.descendants(matching: .any)["infinite-canvas"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["Pinch to zoom • Drag with two fingers to move"].exists)
 
     let zoomInButton = app.buttons["canvas-zoom-in"]
     XCTAssertTrue(zoomInButton.waitForExistence(timeout: 3))
@@ -212,6 +213,9 @@ final class WhyboardUITests: XCTestCase {
     let selectMode = app.buttons["library-select-mode"]
     XCTAssertTrue(selectMode.waitForExistence(timeout: 3))
     selectMode.tap()
+    XCTAssertTrue(app.buttons["Select All"].waitForExistence(timeout: 3))
+    XCTAssertFalse(app.buttons["Extend Selection Backward"].exists)
+    XCTAssertFalse(app.buttons["Extend Selection Forward"].exists)
     app.staticTexts["Untitled Note"].firstMatch.tap()
     XCTAssertTrue(app.staticTexts["1 selected"].waitForExistence(timeout: 3))
     XCTAssertTrue(app.buttons["Move"].exists)

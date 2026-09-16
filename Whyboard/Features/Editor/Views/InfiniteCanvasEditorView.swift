@@ -51,7 +51,6 @@ struct InfiniteCanvasEditorView: View {
   var body: some View {
     canvasContent
       .background(WhyboardTheme.paperColor(for: resolvedPaperStyle))
-      .overlay(alignment: .bottomLeading) { navigationHint }
       .navigationTitle(note.title)
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(WhyboardTheme.chromeBackground, for: .navigationBar)
@@ -104,18 +103,6 @@ struct InfiniteCanvasEditorView: View {
         .tint(WhyboardTheme.accent)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-  }
-
-  private var navigationHint: some View {
-    Label("Pinch to zoom • Drag with two fingers to move", systemImage: "hand.draw")
-      .font(.caption.weight(.medium))
-      .foregroundStyle(.secondary)
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
-      .background(.regularMaterial, in: Capsule())
-      .padding(16)
-      .allowsHitTesting(false)
-      .accessibilityHidden(true)
   }
 
   @ToolbarContentBuilder

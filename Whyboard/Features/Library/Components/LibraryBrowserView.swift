@@ -33,7 +33,6 @@ struct LibraryBrowserView: View {
   @Binding var isSelecting: Bool
   @Binding var selection: Set<LibrarySelectionItem>
   @State private var searchText = ""
-  @State private var keyboardSelectionIndex = 0
 
   private let columns = [
     GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 18)
@@ -221,16 +220,6 @@ private extension LibraryBrowserView {
         }
         .keyboardShortcut("a", modifiers: .command)
 
-        Button("Extend Selection Backward", systemImage: "arrow.left") {
-          extendKeyboardSelection(by: -1)
-        }
-        .keyboardShortcut(.leftArrow, modifiers: .shift)
-
-        Button("Extend Selection Forward", systemImage: "arrow.right") {
-          extendKeyboardSelection(by: 1)
-        }
-        .keyboardShortcut(.rightArrow, modifiers: .shift)
-
         Spacer()
 
         Text("\(selection.count) selected")
@@ -282,22 +271,11 @@ private extension LibraryBrowserView {
   }
 
   private func toggle(_ item: LibrarySelectionItem) {
-    if let index = orderedVisibleItems.firstIndex(of: item) {
-      keyboardSelectionIndex = index
-    }
     if selection.contains(item) {
       selection.remove(item)
     } else {
       selection.insert(item)
     }
-  }
-
-  private func extendKeyboardSelection(by offset: Int) {
-    guard !orderedVisibleItems.isEmpty else { return }
-    keyboardSelectionIndex = min(
-      max(keyboardSelectionIndex + offset, 0),
-      orderedVisibleItems.count - 1)
-    selection.insert(orderedVisibleItems[keyboardSelectionIndex])
   }
 
   private func setSelecting(_ newValue: Bool) {

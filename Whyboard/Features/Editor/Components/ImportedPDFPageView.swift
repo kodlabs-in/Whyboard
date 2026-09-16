@@ -19,21 +19,14 @@ struct ImportedPDFPageView: UIViewRepresentable {
 }
 
 final class ImportedPDFPageUIView: UIView {
-  private var page: PDFPage?
+  private let pdfView = PDFView()
   private var configurationID = ""
-
-  override static var layerClass: AnyClass { CATiledLayer.self }
 
   override init(frame: CGRect) {
     super.init(frame: frame)
     isOpaque = true
     backgroundColor = .white
-    contentMode = .redraw
-    if let tiledLayer = layer as? CATiledLayer {
-      tiledLayer.levelsOfDetail = 4
-      tiledLayer.levelsOfDetailBias = 3
-      tiledLayer.tileSize = CGSize(width: 512, height: 512)
-    }
+    configurePDFView()
   }
 
   @available(*, unavailable)
@@ -44,35 +37,31 @@ final class ImportedPDFPageUIView: UIView {
   func configure(url: URL, pageIndex: Int) {
     let nextID = "\(url.path)#\(pageIndex)"
     guard nextID != configurationID else { return }
+    guard
+      let document = PDFDocument(url: url),
+      let page = document.page(at: pageIndex)
+    else {
+      configurationID = ""
+      pdfView.document = nil
+      return
+    }
     configurationID = nextID
-    page = PDFDocument(url: url)?.page(at: pageIndex)
-    setNeedsDisplay()
+    pdfView.document = document
+    pdfView.go(to: page)
+    pdfView.autoScales = true
   }
 
-  override func draw(_ rect: CGRect) {
-    guard let page, let context = UIGraphicsGetCurrentContext() else { return }
-    UIColor.white.setFill()
-    context.fill(rect)
-    let source = page.bounds(for: .mediaBox)
-    let destination = aspectFit(source.size, inside: bounds)
-    context.saveGState()
-    context.translateBy(x: destination.minX, y: destination.maxY)
-    context.scaleBy(
-      x: destination.width / source.width,
-      y: -destination.height / source.height)
-    context.translateBy(x: -source.minX, y: -source.minY)
-    page.draw(with: .mediaBox, to: context)
-    context.restoreGState()
-  }
-
-  private func aspectFit(_ size: CGSize, inside bounds: CGRect) -> CGRect {
-    guard size.width > 0, size.height > 0 else { return bounds }
-    let scale = min(bounds.width / size.width, bounds.height / size.height)
-    let fitted = CGSize(width: size.width * scale, height: size.height * scale)
-    return CGRect(
-      x: bounds.midX - fitted.width / 2,
-      y: bounds.midY - fitted.height / 2,
-      width: fitted.width,
-      height: fitted.height)
+  private func configurePDFView() {
+    pdfView.frame = bounds
+    pdfView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    pdfView.backgroundColor = .white
+    pdfView.displayBox = .mediaBox
+    pdfView.displayMode = .singlePage
+    pdfView.displayDirection = .vertical
+    pdfView.displaysPageBreaks = false
+    pdfView.pageShadowsEnabled = false
+    pdfView.isUserInteractionEnabled = false
+    pdfView.autoScales = true
+    addSubview(pdfView)
   }
 }
