@@ -127,10 +127,55 @@ struct PersistenceTests {
 
     let currentPreview = directories.previews
       .appending(path: noteID.uuidString.lowercased(), directoryHint: .isDirectory)
-      .appending(path: "\(pageID.uuidString.lowercased())-r2.heic")
+      .appending(
+        path:
+          "\(pageID.uuidString.lowercased())-v\(PagePreviewRenderer.version)-r2.heic")
     try FileManager.default.removeItem(at: currentPreview)
+    await previews.clearMemoryCache()
     #expect(await previews.preview(pageID: pageID, noteID: noteID, revision: 2) == nil)
     #expect(try await repository.load(pageID: pageID, noteID: noteID) == drawing)
+  }
+
+  @Test func previewCompositesWorkspaceObjectsWithInk() async throws {
+    let directories = try AppDirectories.make(isTesting: true)
+    defer { try? FileManager.default.removeItem(at: directories.root) }
+    let repository = DrawingRepository(directories: directories)
+    let noteID = UUID()
+    let pageID = UUID()
+    let drawing = PKDrawing()
+
+    try await repository.previews.store(
+      drawing: drawing,
+      pageID: pageID,
+      noteID: noteID,
+      revision: 1)
+    let drawingOnlyResult = await repository.previews.preview(
+      pageID: pageID,
+      noteID: noteID,
+      revision: 1)
+    let drawingOnly = try #require(drawingOnlyResult)
+
+    let shape = WorkspaceElement(
+      kind: .shape,
+      frame: WorkspaceElementFrame(
+        center: CGPoint(x: 300, y: 400),
+        size: CGSize(width: 240, height: 180)),
+      zIndex: 0,
+      shapeKind: .ellipse,
+      color: .orange)
+    try await repository.previews.store(
+      drawing: drawing,
+      elements: [shape],
+      pageID: pageID,
+      noteID: noteID,
+      revision: 2)
+    let compositedResult = await repository.previews.preview(
+      pageID: pageID,
+      noteID: noteID,
+      revision: 2)
+    let composited = try #require(compositedResult)
+
+    #expect(drawingOnly.pngData() != composited.pngData())
   }
 
   @Test func damagedDrawingReportsAnErrorWithoutReplacingTheFile() async throws {

@@ -19,6 +19,7 @@ struct NoteEditorView: View {
   @State private var currentScrollOffset: Double
   @State private var pageToDelete: Page?
   @State private var showsPageOrganizer = false
+  @State private var showsJumpToPage = false
   @State private var nameEditor: NameEditorRequest?
 
   let note: Note
@@ -93,7 +94,21 @@ struct NoteEditorView: View {
       }
     }
     .sheet(isPresented: $showsPageOrganizer) {
-      PageOrganizerSheet(pages: orderedPages, onMove: movePages)
+      PageOrganizerSheet(
+        note: note,
+        pages: orderedPages,
+        currentPageID: controller.activePageID,
+        drawingRepository: drawingRepository,
+        onSelect: scrollToPage,
+        onMove: movePages)
+    }
+    .sheet(isPresented: $showsJumpToPage) {
+      JumpToPageSheet(
+        note: note,
+        pages: orderedPages,
+        currentPageID: controller.activePageID,
+        drawingRepository: drawingRepository,
+        onSelect: scrollToPage)
     }
     .sheet(item: $nameEditor) { NameEditorSheet(request: $0) }
     .alert(
@@ -190,6 +205,10 @@ struct NoteEditorView: View {
 
       Button("Arrange Pages", systemImage: "rectangle.3.group", action: showPageOrganizer)
 
+      Button("Jump to Page", systemImage: "arrow.right.doc", action: showJumpToPage)
+        .keyboardShortcut("g", modifiers: .command)
+        .accessibilityIdentifier("jump-to-page")
+
       WorkspaceObjectToolbar(controller: elementEditingController)
 
       NoteOptionsMenu(
@@ -261,6 +280,7 @@ private extension NoteEditorView {
   }
 
   private func scrollToPage(_ pageID: UUID) {
+    controller.focus(pageID)
     Task {
       try? await Task.sleep(for: .milliseconds(120))
       withAnimation(.smooth) {
@@ -284,6 +304,10 @@ private extension NoteEditorView {
 
   private func showPageOrganizer() {
     showsPageOrganizer = true
+  }
+
+  private func showJumpToPage() {
+    showsJumpToPage = true
   }
 
   private func presentRename() {

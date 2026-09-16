@@ -5,6 +5,8 @@ struct LibraryBrowserView: View {
   let folders: [Folder]
   let notes: [Note]
   let pageCounts: [UUID: Int]
+  let coverPages: [UUID: Page]
+  let drawingRepository: DrawingRepository
   let showsSettings: Bool
   let onOpenFolder: (Folder) -> Void
   let onOpenNote: (Note) -> Void
@@ -77,7 +79,11 @@ struct LibraryBrowserView: View {
         Button {
           onOpenNote(note)
         } label: {
-          NoteCard(note: note, pageCount: pageCounts[note.id, default: 0])
+          NoteCard(
+            note: note,
+            pageCount: pageCounts[note.id, default: 0],
+            previewPage: coverPages[note.id],
+            drawingRepository: drawingRepository)
         }
         .buttonStyle(.plain)
         .contextMenu { noteActions(note) }

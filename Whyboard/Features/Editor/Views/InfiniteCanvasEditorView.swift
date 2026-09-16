@@ -78,7 +78,7 @@ struct InfiniteCanvasEditorView: View {
   @ViewBuilder
   private var canvasContent: some View {
     if let page {
-      let session = editorController.session(for: page, generatesPreview: false)
+      let session = editorController.session(for: page)
       let elementSession = editorController.elementSession(
         for: page,
         canvasSize: InfiniteCanvasMetrics.contentSize)

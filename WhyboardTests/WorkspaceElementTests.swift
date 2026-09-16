@@ -27,12 +27,14 @@ struct WorkspaceElementTests {
     let note = Note(folderID: UUID())
     let page = Page(noteID: note.id, sortOrder: 0)
     var saveCount = 0
+    var previewRevisions: [Int64] = []
     let session = ElementSession(
       page: page,
       note: note,
       canvasSize: CanonicalPage.size,
       saveMetadata: { saveCount += 1 },
-      onError: { _ in })
+      onError: { _ in },
+      onPreviewInvalidated: { _, revision in previewRevisions.append(revision) })
     let elementID = session.addShape(.rectangle, at: CGPoint(x: 300, y: 400))
     let frame = try #require(session.element(withID: elementID)?.frame)
 
@@ -48,6 +50,8 @@ struct WorkspaceElementTests {
     #expect(session.elements.first?.frame.rotationDegrees == 30)
     #expect(page.workspaceElementsData != nil)
     #expect(saveCount == 3)
+    #expect(page.contentRevision == 3)
+    #expect(previewRevisions == [1, 2, 3])
   }
 
   @Test func photoResizePreservesItsAspectRatio() {

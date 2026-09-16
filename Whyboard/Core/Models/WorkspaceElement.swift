@@ -66,11 +66,11 @@ struct WorkspaceElementFrame: Codable, Equatable, Sendable {
     self.rotationDegrees = rotationDegrees
   }
 
-  var center: CGPoint {
+  nonisolated var center: CGPoint {
     CGPoint(x: centerX, y: centerY)
   }
 
-  var size: CGSize {
+  nonisolated var size: CGSize {
     CGSize(width: width, height: height)
   }
 
@@ -179,7 +179,7 @@ struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable {
     }
   }
 
-  var displayText: String {
+  nonisolated var displayText: String {
     guard let text, !text.isEmpty else { return "Double tap to add text" }
     return text
   }

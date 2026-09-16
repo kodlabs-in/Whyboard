@@ -18,6 +18,14 @@ struct LibraryView: View {
     Dictionary(grouping: pages, by: \.noteID).mapValues(\.count)
   }
 
+  private var coverPages: [UUID: Page] {
+    pages.reduce(into: [:]) { result, page in
+      let currentOrder = result[page.noteID]?.sortOrder ?? Int.max
+      guard page.sortOrder < currentOrder else { return }
+      result[page.noteID] = page
+    }
+  }
+
   private var mutationContext: LibraryMutationContext {
     LibraryMutationContext(
       folders: folders,
@@ -102,6 +110,8 @@ struct LibraryView: View {
       folders: controller.folders(in: location, from: folders),
       notes: controller.notes(in: location, from: notes, folders: folders),
       pageCounts: pageCounts,
+      coverPages: coverPages,
+      drawingRepository: drawingRepository,
       showsSettings: location == .root,
       onOpenFolder: { routes.append(.folder($0.id)) },
       onOpenNote: { routes.append(.note($0.id)) },

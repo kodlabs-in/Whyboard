@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PencilKit
 import SwiftData
 import SwiftUI
 
@@ -59,7 +60,13 @@ final class EditorController {
       note: note,
       canvasSize: canvasSize,
       saveMetadata: { [weak self] in try self?.saveMetadata?() },
-      onError: { [weak self] message in self?.errorMessage = message })
+      onError: { [weak self] message in self?.errorMessage = message },
+      onPreviewInvalidated: { [weak self] elements, revision in
+        self?.schedulePreview(
+          page: page,
+          elements: elements,
+          revision: revision)
+      })
     elementSessions[page.id] = session
     return session
   }
@@ -104,6 +111,7 @@ final class EditorController {
       for pageID in removableIDs {
         await releaseSessionIfPossible(pageID)
       }
+      await drawingRepository.previews.clearMemoryCache()
       refreshSaveStatus()
     }
   }
@@ -212,5 +220,42 @@ final class EditorController {
     } catch {
       errorMessage = error.localizedDescription
     }
+  }
+
+  private func schedulePreview(
+    page: Page,
+    elements: [WorkspaceElement],
+    revision: Int64
+  ) {
+    let currentDrawing = sessions[page.id]?.isLoaded == true ? sessions[page.id]?.drawing : nil
+    let pageID = page.id
+    let noteID = note.id
+    let layout = PagePreviewLayout(noteKind: note.kind)
+    let drawingRepository = drawingRepository
+
+    Task {
+      guard
+        let drawing = await previewDrawing(
+          current: currentDrawing,
+          pageID: pageID,
+          noteID: noteID)
+      else { return }
+      try? await drawingRepository.previews.store(
+        drawing: drawing,
+        elements: elements,
+        layout: layout,
+        pageID: pageID,
+        noteID: noteID,
+        revision: revision)
+    }
+  }
+
+  private func previewDrawing(
+    current: PKDrawing?,
+    pageID: UUID,
+    noteID: UUID
+  ) async -> PKDrawing? {
+    if let current { return current }
+    return try? await drawingRepository.load(pageID: pageID, noteID: noteID)
   }
 }

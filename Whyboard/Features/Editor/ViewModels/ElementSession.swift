@@ -13,19 +13,22 @@ final class ElementSession {
   private let canvasSize: CGSize
   private let saveMetadata: () throws -> Void
   private let onError: (String) -> Void
+  private let onPreviewInvalidated: ([WorkspaceElement], Int64) -> Void
 
   init(
     page: Page,
     note: Note,
     canvasSize: CGSize,
     saveMetadata: @escaping () throws -> Void,
-    onError: @escaping (String) -> Void
+    onError: @escaping (String) -> Void,
+    onPreviewInvalidated: @escaping ([WorkspaceElement], Int64) -> Void = { _, _ in }
   ) {
     self.page = page
     self.note = note
     self.canvasSize = canvasSize
     self.saveMetadata = saveMetadata
     self.onError = onError
+    self.onPreviewInvalidated = onPreviewInvalidated
     elements = WorkspaceElementCoding.decode(page.workspaceElementsData)
   }
 
@@ -192,17 +195,21 @@ final class ElementSession {
 
   private func persist() {
     let previousData = page.workspaceElementsData
+    let previousRevision = page.contentRevision
     let previousPageUpdate = page.updatedAt
     let previousNoteUpdate = note.updatedAt
 
     do {
       page.workspaceElementsData = try WorkspaceElementCoding.encode(elements)
+      page.contentRevision += 1
       let now = Date()
       page.updatedAt = now
       note.updatedAt = now
       try saveMetadata()
+      onPreviewInvalidated(elements, page.contentRevision)
     } catch {
       page.workspaceElementsData = previousData
+      page.contentRevision = previousRevision
       page.updatedAt = previousPageUpdate
       note.updatedAt = previousNoteUpdate
       onError(error.localizedDescription)

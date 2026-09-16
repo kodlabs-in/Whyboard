@@ -174,11 +174,15 @@ final class PageSession {
     guard generatesPreview else { return }
     let pageID = page.id
     let noteID = note.id
+    let elements = WorkspaceElementCoding.decode(page.workspaceElementsData)
+    let layout = PagePreviewLayout(noteKind: note.kind)
     let previews = drawingRepository.previews
     previewTask = Task {
       do {
         try await previews.store(
           drawing: drawing,
+          elements: elements,
+          layout: layout,
           pageID: pageID,
           noteID: noteID,
           revision: revision)

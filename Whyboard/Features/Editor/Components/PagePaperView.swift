@@ -134,12 +134,13 @@ struct PagePaperView: View {
         contentOffset: .zero)
 
       ZStack {
-        elementVisualLayer(transform: transform)
         if let preview {
           Image(uiImage: preview)
             .resizable()
             .scaledToFit()
             .accessibilityHidden(true)
+        } else {
+          elementVisualLayer(transform: transform)
         }
       }
     }

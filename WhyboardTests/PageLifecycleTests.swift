@@ -40,6 +40,20 @@ struct PageLifecycleTests {
     #expect(live == Set(pageIDs[49...52]))
   }
 
+  @Test func fiveHundredPageNavigationKeepsTheLiveWindowBounded() {
+    let pages = (0..<500).map { Page(noteID: UUID(), sortOrder: $0) }
+    let pageIDs = pages.map(\.id)
+
+    let destination = PageNavigation.page(number: 500, in: pages)
+    let live = PageWindow.livePageIDs(
+      orderedPageIDs: pageIDs,
+      visiblePageIDs: Set([destination?.id].compactMap { $0 }))
+
+    #expect(destination?.id == pages.last?.id)
+    #expect(PageNavigation.page(number: 501, in: pages) == nil)
+    #expect(live == Set(pageIDs[498...499]))
+  }
+
   @Test func noVisiblePageProducesNoLiveCanvas() {
     let pageIDs = (0..<3).map { _ in UUID() }
     #expect(PageWindow.livePageIDs(orderedPageIDs: pageIDs, visiblePageIDs: []).isEmpty)

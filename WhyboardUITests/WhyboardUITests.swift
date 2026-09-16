@@ -32,6 +32,22 @@ final class WhyboardUITests: XCTestCase {
     addPageButton.tap()
 
     XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 5))
+
+    app.buttons["Arrange Pages"].tap()
+    XCTAssertTrue(app.buttons["page-organizer-page-1"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["page-organizer-page-2"].waitForExistence(timeout: 3))
+    attachScreenshot(named: "Page organiser thumbnails")
+    app.buttons["Done"].tap()
+
+    app.buttons["jump-to-page"].tap()
+    let jumpField = app.textFields["jump-to-page-field"]
+    XCTAssertTrue(jumpField.waitForExistence(timeout: 3))
+    attachScreenshot(named: "Jump to page")
+    jumpField.tap()
+    jumpField.typeText(XCUIKeyboardKey.delete.rawValue)
+    jumpField.typeText("2")
+    app.buttons["jump-to-page-go"].tap()
+    XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 3))
     attachScreenshot(named: "Editor with two pages")
   }
 

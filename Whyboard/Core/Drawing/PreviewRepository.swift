@@ -17,21 +17,39 @@ actor PreviewRepository {
 
   private let directories: AppDirectories
   private let fileManager: FileManager
+  private let renderer: PagePreviewRenderer
+  private let imageCache = NSCache<NSString, UIImage>()
+  private var cachedKeysByPage: [PreviewKey: Set<String>] = [:]
   private var newestStoredRevision: [PreviewKey: Int64] = [:]
 
-  init(directories: AppDirectories, fileManager: FileManager = .default) {
+  init(
+    directories: AppDirectories,
+    attachments: AttachmentRepository,
+    fileManager: FileManager = .default
+  ) {
     self.directories = directories
     self.fileManager = fileManager
+    renderer = PagePreviewRenderer(attachments: attachments)
+    imageCache.totalCostLimit = 64 * 1_024 * 1_024
   }
 
   func preview(pageID: UUID, noteID: UUID, revision: Int64) -> UIImage? {
+    let key = PreviewKey(noteID: noteID, pageID: pageID)
+    let cacheKey = cacheKey(pageID: pageID, noteID: noteID, revision: revision)
+    if let image = imageCache.object(forKey: cacheKey as NSString) {
+      return image
+    }
     let url = previewURL(pageID: pageID, noteID: noteID, revision: revision)
     guard let data = try? Data(contentsOf: url) else { return nil }
-    return UIImage(data: data)
+    guard !Task.isCancelled, let image = UIImage(data: data) else { return nil }
+    cache(image, with: cacheKey, for: key)
+    return image
   }
 
   func store(
     drawing: PKDrawing,
+    elements: [WorkspaceElement] = [],
+    layout: PagePreviewLayout = .page,
     pageID: UUID,
     noteID: UUID,
     revision: Int64
@@ -40,12 +58,21 @@ actor PreviewRepository {
     guard revision >= newestStoredRevision[key, default: -1] else { return }
     let noteDirectory = notePreviewDirectory(noteID: noteID)
     try createDirectory(noteDirectory)
-    let data = try encodedPreview(for: drawing)
+    let image = renderer.render(
+      PagePreviewSnapshot(drawing: drawing, elements: elements, layout: layout),
+      noteID: noteID,
+      pageID: pageID)
+    let data = try encodedPreview(for: image)
     let destination = previewURL(pageID: pageID, noteID: noteID, revision: revision)
 
     do {
       try data.write(to: destination, options: [.atomic, .completeFileProtection])
       newestStoredRevision[key] = revision
+      removeCachedImages(for: key)
+      cache(
+        image,
+        with: cacheKey(pageID: pageID, noteID: noteID, revision: revision),
+        for: key)
       removeObsoletePreviews(
         pageID: pageID,
         keeping: destination,
@@ -56,7 +83,9 @@ actor PreviewRepository {
   }
 
   func deletePage(pageID: UUID, noteID: UUID) {
-    newestStoredRevision[PreviewKey(noteID: noteID, pageID: pageID)] = nil
+    let key = PreviewKey(noteID: noteID, pageID: pageID)
+    newestStoredRevision[key] = nil
+    removeCachedImages(for: key)
     let directory = notePreviewDirectory(noteID: noteID)
     let prefix = "\(pageID.uuidString.lowercased())-"
     guard
@@ -72,6 +101,12 @@ actor PreviewRepository {
   func deleteNote(noteID: UUID) {
     newestStoredRevision = newestStoredRevision.filter { $0.key.noteID != noteID }
     try? fileManager.removeItem(at: notePreviewDirectory(noteID: noteID))
+    removeCachedImages(noteID: noteID)
+  }
+
+  func clearMemoryCache() {
+    imageCache.removeAllObjects()
+    cachedKeysByPage.removeAll()
   }
 
   private func notePreviewDirectory(noteID: UUID) -> URL {
@@ -81,13 +116,12 @@ actor PreviewRepository {
 
   private func previewURL(pageID: UUID, noteID: UUID, revision: Int64) -> URL {
     notePreviewDirectory(noteID: noteID)
-      .appending(path: "\(pageID.uuidString.lowercased())-r\(revision).heic")
+      .appending(
+        path:
+          "\(pageID.uuidString.lowercased())-v\(PagePreviewRenderer.version)-r\(revision).heic")
   }
 
-  private func encodedPreview(for drawing: PKDrawing) throws -> Data {
-    let image = drawing.image(
-      from: CGRect(origin: .zero, size: CanonicalPage.size),
-      scale: 0.25)
+  private func encodedPreview(for image: UIImage) throws -> Data {
     guard let cgImage = image.cgImage else { throw PreviewStorageError.encodingFailed }
 
     let encodedData = NSMutableData()
@@ -128,5 +162,37 @@ actor PreviewRepository {
     for url in urls where url != destination && url.lastPathComponent.hasPrefix(prefix) {
       try? fileManager.removeItem(at: url)
     }
+  }
+
+  private func cacheKey(pageID: UUID, noteID: UUID, revision: Int64) -> String {
+    "\(noteID.uuidString)-\(pageID.uuidString)-\(revision)"
+  }
+
+  private func cache(_ image: UIImage, with cacheKey: String, for key: PreviewKey) {
+    imageCache.setObject(
+      image,
+      forKey: cacheKey as NSString,
+      cost: image.decodedByteCost)
+    cachedKeysByPage[key, default: []].insert(cacheKey)
+  }
+
+  private func removeCachedImages(for key: PreviewKey) {
+    for cacheKey in cachedKeysByPage.removeValue(forKey: key) ?? [] {
+      imageCache.removeObject(forKey: cacheKey as NSString)
+    }
+  }
+
+  private func removeCachedImages(noteID: UUID) {
+    let keys = cachedKeysByPage.keys.filter { $0.noteID == noteID }
+    for key in keys {
+      removeCachedImages(for: key)
+    }
+  }
+}
+
+private extension UIImage {
+  nonisolated var decodedByteCost: Int {
+    guard let cgImage else { return 0 }
+    return cgImage.bytesPerRow * cgImage.height
   }
 }

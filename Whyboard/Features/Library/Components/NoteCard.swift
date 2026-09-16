@@ -6,6 +6,8 @@ struct NoteCard: View {
 
   let note: Note
   let pageCount: Int
+  let previewPage: Page?
+  let drawingRepository: DrawingRepository
 
   private var paperStyle: NotePaperStyle {
     note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
@@ -17,9 +19,19 @@ struct NoteCard: View {
         .fill(WhyboardTheme.paperColor(for: paperStyle))
         .aspectRatio(1.5, contentMode: .fit)
         .overlay {
-          Image(systemName: note.kind.systemImage)
-            .font(.title2.weight(.medium))
-            .foregroundStyle(WhyboardTheme.pageControlColor(for: paperStyle))
+          if let previewPage {
+            PagePreviewView(
+              descriptor: PagePreviewDescriptor(page: previewPage, noteKind: note.kind),
+              drawingRepository: drawingRepository,
+              placeholderSystemImage: note.kind.systemImage,
+              placeholderColor: WhyboardTheme.pageControlColor(for: paperStyle)
+            )
+            .padding(6)
+          } else {
+            Image(systemName: note.kind.systemImage)
+              .font(.title2.weight(.medium))
+              .foregroundStyle(WhyboardTheme.pageControlColor(for: paperStyle))
+          }
         }
         .overlay {
           RoundedRectangle(cornerRadius: 10, style: .continuous)

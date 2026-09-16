@@ -1,5 +1,6 @@
 import Foundation
 import PencilKit
+import UIKit
 
 enum DrawingStorageError: LocalizedError, Sendable {
   case invalidDrawing
@@ -28,8 +29,34 @@ actor DrawingRepository {
   init(directories: AppDirectories, fileManager: FileManager = .default) {
     self.directories = directories
     self.fileManager = fileManager
-    previews = PreviewRepository(directories: directories)
-    attachments = AttachmentRepository(directories: directories)
+    let attachments = AttachmentRepository(directories: directories)
+    self.attachments = attachments
+    previews = PreviewRepository(directories: directories, attachments: attachments)
+  }
+
+  func preview(for descriptor: PagePreviewDescriptor) async -> UIImage? {
+    let cachedImage = await previews.preview(
+      pageID: descriptor.pageID,
+      noteID: descriptor.noteID,
+      revision: descriptor.revision)
+    if let cachedImage { return cachedImage }
+
+    guard !Task.isCancelled else { return nil }
+    guard
+      let drawing = try? load(pageID: descriptor.pageID, noteID: descriptor.noteID)
+    else { return nil }
+    try? await previews.store(
+      drawing: drawing,
+      elements: descriptor.elements,
+      layout: descriptor.layout,
+      pageID: descriptor.pageID,
+      noteID: descriptor.noteID,
+      revision: descriptor.revision)
+    guard !Task.isCancelled else { return nil }
+    return await previews.preview(
+      pageID: descriptor.pageID,
+      noteID: descriptor.noteID,
+      revision: descriptor.revision)
   }
 
   func load(pageID: UUID, noteID: UUID) throws -> PKDrawing {
