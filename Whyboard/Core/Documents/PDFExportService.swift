@@ -81,8 +81,6 @@ private actor PDFExportWorker {
     _ page: PDFExportPageInput,
     renderContext: PDFPageRenderContext
   ) async throws {
-    let interval = AppSignpost.interval("PDF Page Render")
-    defer { interval.end() }
     let drawing = try await drawingRepository.load(
       pageID: page.pageID,
       noteID: page.noteID)

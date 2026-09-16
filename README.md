@@ -44,11 +44,13 @@ The project keeps its development commands in one small `Makefile`:
 make format  # Apply the repository's Swift style.
 make lint    # Verify swift-format and SwiftLint rules.
 make build   # Compile for a generic iOS device without code signing.
-make check   # Run linting and the device build used by CI.
+make test    # Run all tests on an automatically selected iPad simulator.
+make check   # Run the complete lint, build, and test workflow used by CI.
 ```
 
-Tests run only on a connected physical iPad. Find its identifier and pass it explicitly so a
-simulator is never selected by accident:
+The default test command selects an available iPad simulator dynamically, so it works on a clean
+Xcode VM or GitHub Actions runner without relying on a developer's device, files, or signing
+identity. To run the same suite on a connected physical iPad, pass its identifier explicitly:
 
 ```sh
 xcrun devicectl list devices

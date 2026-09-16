@@ -18,7 +18,7 @@ struct PDFPortabilityTests {
   @Test func importPublishesOneStablePagePerPDFPageAndKeepsSourceUnchanged() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let source = directories.root.appending(path: "Lecture.pdf")
@@ -59,7 +59,7 @@ struct PDFPortabilityTests {
   @Test func invalidPDFNeverPublishesMetadata() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let source = directories.root.appending(path: "Broken.pdf")
@@ -80,7 +80,7 @@ struct PDFPortabilityTests {
   }
 
   @Test func exportStreamsPagesInNotebookOrderAndReopensSuccessfully() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let note = Note(folderID: UUID(), title: "Ordered Export")
@@ -102,7 +102,7 @@ struct PDFPortabilityTests {
   @Test func fiveHundredPageImportCreatesReferencesWithoutEagerPreviews() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let source = directories.root.appending(path: "Reference-500.pdf")
@@ -127,7 +127,7 @@ struct PDFPortabilityTests {
   @Test func cancelledImportPublishesNoNoteOrPayload() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let source = directories.root.appending(path: "Cancelled.pdf")
@@ -153,7 +153,7 @@ struct PDFPortabilityTests {
   }
 
   @Test func cancelledExportRemovesTemporaryOutput() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let note = Note(folderID: UUID(), title: "Cancelled Export")

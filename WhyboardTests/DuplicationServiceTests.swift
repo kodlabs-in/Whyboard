@@ -9,7 +9,7 @@ struct DuplicationServiceTests {
   @Test func pageDuplicateIsAdjacentAndOwnsIndependentFiles() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let note = Note(folderID: UUID(), title: "Biology")
@@ -59,7 +59,7 @@ struct DuplicationServiceTests {
   @Test func noteDuplicateCopiesKindPagesAndPredictableTitle() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let folderID = UUID()
@@ -115,7 +115,7 @@ struct DuplicationServiceTests {
   @Test func duplicationStopsWhenTheSourceCannotFlush() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let note = Note(folderID: UUID())
@@ -135,7 +135,7 @@ struct DuplicationServiceTests {
   @Test func noteDuplicateRemapsAndCopiesImportedPDFStorage() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let source = Note(folderID: UUID(), title: "Worksheet")

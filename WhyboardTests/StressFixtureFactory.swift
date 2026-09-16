@@ -20,7 +20,7 @@ private enum StressFixtureError: Error {
 @MainActor
 enum StressFixtureFactory {
   static func notebook(pageCount: Int) async throws -> PopulatedNotebookFixture {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     let repository = DrawingRepository(directories: directories)
     let container = try modelContainer()
     let context = container.mainContext

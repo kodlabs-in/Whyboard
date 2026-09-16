@@ -9,7 +9,7 @@ struct EditorControllerTests {
   @Test func insertReorderAndDeleteKeepStablePageIdentities() async throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let note = Note(folderID: UUID())
     let first = Page(noteID: note.id, sortOrder: 0)
@@ -48,7 +48,7 @@ struct EditorControllerTests {
   @Test func deletingTheOnlyPageIsRejected() throws {
     let container = try makeContainer()
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let note = Note(folderID: UUID())
     let page = Page(noteID: note.id, sortOrder: 0)

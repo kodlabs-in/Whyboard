@@ -17,7 +17,6 @@ struct InfiniteCanvasEditorView: View {
   @State private var elementEditingController: WorkspaceElementEditingController
   @State private var nameEditor: NameEditorRequest?
   @State private var exportController = NoteExportController()
-  @State private var noteOpenInterval: AppSignpostInterval?
 
   let note: Note
   let drawingRepository: DrawingRepository
@@ -93,7 +92,6 @@ struct InfiniteCanvasEditorView: View {
         canvasController: canvasController,
         toolPickerController: toolPickerController,
         attachments: drawingRepository.attachments,
-        onReady: finishNoteOpen,
         onFocus: { editorController.focus(page.id) },
         onElementActivate: { element in
           elementEditingController.activate(element, in: elementSession)
@@ -156,8 +154,6 @@ struct InfiniteCanvasEditorView: View {
   }
 
   private func prepareEditor() {
-    noteOpenInterval?.end()
-    noteOpenInterval = AppSignpost.interval("Note Open")
     editorController.configure { try modelContext.save() }
     canvasController.configure(onViewportChanged: persistViewport)
     elementEditingController.configure(
@@ -183,15 +179,8 @@ struct InfiniteCanvasEditorView: View {
   }
 
   private func saveAndClose() {
-    noteOpenInterval?.end()
-    noteOpenInterval = nil
     canvasController.persistCurrentViewport()
     Task { await editorController.close() }
-  }
-
-  private func finishNoteOpen() {
-    noteOpenInterval?.end()
-    noteOpenInterval = nil
   }
 
   private func saveViewportAndDrawing() {
@@ -252,7 +241,6 @@ private struct InfiniteCanvasSurface: View {
   let canvasController: InfiniteCanvasController
   let toolPickerController: ToolPickerController
   let attachments: AttachmentRepository
-  let onReady: () -> Void
   let onFocus: () -> Void
   let onElementActivate: (WorkspaceElement) -> Void
 
@@ -277,12 +265,7 @@ private struct InfiniteCanvasSurface: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .task(id: page.id) {
-      let interval = AppSignpost.interval("Page Activation")
-      defer { interval.end() }
       await session.loadIfNeeded()
-      if session.isLoaded {
-        onReady()
-      }
     }
   }
 

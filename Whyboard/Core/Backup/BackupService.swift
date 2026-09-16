@@ -74,8 +74,6 @@ private actor BackupPackageWorker {
     progress: AsyncStream<Double>.Continuation
   ) throws -> [BackupPayload] {
     try files.enumerated().map { index, source in
-      let interval = AppSignpost.interval("Backup Item")
-      defer { interval.end() }
       try Task.checkCancellation()
       guard BackupFileUtilities.isSafeRelativePath(source.relativePath) else {
         throw BackupFileError.unsafePath

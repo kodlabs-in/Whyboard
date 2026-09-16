@@ -49,8 +49,6 @@ actor DrawingRepository {
   }
 
   func preview(for descriptor: PagePreviewDescriptor) async -> UIImage? {
-    let interval = AppSignpost.interval("Preview Render")
-    defer { interval.end() }
     let cachedImage = await previews.preview(
       pageID: descriptor.pageID,
       noteID: descriptor.noteID,
@@ -78,8 +76,6 @@ actor DrawingRepository {
   }
 
   func load(pageID: UUID, noteID: UUID) throws -> PKDrawing {
-    let interval = AppSignpost.interval("Drawing Load")
-    defer { interval.end() }
     let url = drawingURL(pageID: pageID, noteID: noteID)
     guard fileManager.fileExists(atPath: url.path) else { return PKDrawing() }
 
@@ -98,8 +94,6 @@ actor DrawingRepository {
   }
 
   func save(_ drawing: PKDrawing, pageID: UUID, noteID: UUID) throws {
-    let interval = AppSignpost.interval("Drawing Save")
-    defer { interval.end() }
     let noteDirectory = noteDrawingDirectory(noteID: noteID)
     try createDirectory(noteDirectory)
 

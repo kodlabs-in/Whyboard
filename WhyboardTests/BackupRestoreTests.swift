@@ -198,7 +198,7 @@ struct BackupRestoreTests {
     let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     let container = try ModelContainer(for: schema, configurations: [configuration])
     let context = container.mainContext
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     let repository = DrawingRepository(directories: directories)
     let root = Folder(name: "Library", isSystem: true)
     let folder = Folder(name: "Projects")

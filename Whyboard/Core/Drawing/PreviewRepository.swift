@@ -35,8 +35,6 @@ actor PreviewRepository {
   }
 
   func preview(pageID: UUID, noteID: UUID, revision: Int64) -> UIImage? {
-    let interval = AppSignpost.interval("Preview Decode")
-    defer { interval.end() }
     let key = PreviewKey(noteID: noteID, pageID: pageID)
     let cacheKey = cacheKey(pageID: pageID, noteID: noteID, revision: revision)
     if let image = imageCache.object(forKey: cacheKey as NSString) {

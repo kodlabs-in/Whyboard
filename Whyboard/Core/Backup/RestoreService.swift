@@ -47,8 +47,6 @@ private actor RestorePackageWorker {
     do {
       try Task.checkCancellation()
       try FileManager.default.copyItem(at: source, to: staging)
-      let interval = AppSignpost.interval("Restore Validation")
-      defer { interval.end() }
       let manifest = try BackupValidator.validate(package: staging)
       return PreparedRestorePackage(staging: staging, manifest: manifest)
     } catch {
@@ -64,8 +62,6 @@ private actor RestorePackageWorker {
     progress: AsyncStream<Double>.Continuation
   ) throws {
     for (index, payload) in payloads.enumerated() {
-      let interval = AppSignpost.interval("Restore Item")
-      defer { interval.end() }
       try Task.checkCancellation()
       let source = package.appending(path: "Payload").appending(path: payload.relativePath)
       let destination = try destinationURL(

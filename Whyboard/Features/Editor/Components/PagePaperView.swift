@@ -13,7 +13,6 @@ struct PagePaperView: View {
   let elementSession: ElementSession
   let drawingRepository: DrawingRepository
   let toolPickerController: ToolPickerController
-  let onReady: () -> Void
   let onFocus: () -> Void
   let onElementActivate: (WorkspaceElement) -> Void
   let onInsertBefore: () -> Void
@@ -47,13 +46,8 @@ struct PagePaperView: View {
     .accessibilityLabel("Page \(pageNumber)")
     .task(id: previewTaskID) {
       if isLive {
-        let interval = AppSignpost.interval("Page Activation")
-        defer { interval.end() }
         preview = nil
         await session.loadIfNeeded()
-        if session.isLoaded {
-          onReady()
-        }
       } else {
         preview = await drawingRepository.previews.preview(
           pageID: page.id,

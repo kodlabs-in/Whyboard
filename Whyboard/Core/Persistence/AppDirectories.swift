@@ -11,8 +11,13 @@ struct AppDirectories: Sendable {
   let backups: URL
   let recovery: URL
 
-  static func make(isTesting: Bool) throws -> AppDirectories {
-    let root = try rootURL(isTesting: isTesting)
+  static func make(root customRoot: URL? = nil) throws -> AppDirectories {
+    let root: URL
+    if let customRoot {
+      root = customRoot
+    } else {
+      root = try applicationSupportRootURL()
+    }
     let directories = AppDirectories(
       root: root,
       metadata: root.appending(path: "Metadata", directoryHint: .isDirectory),
@@ -27,13 +32,8 @@ struct AppDirectories: Sendable {
     return directories
   }
 
-  private static func rootURL(isTesting: Bool) throws -> URL {
-    if isTesting {
-      return FileManager.default.temporaryDirectory
-        .appending(path: "WhyboardTests-\(UUID().uuidString)", directoryHint: .isDirectory)
-    }
-
-    return try FileManager.default.url(
+  private static func applicationSupportRootURL() throws -> URL {
+    try FileManager.default.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
       appropriateFor: nil,

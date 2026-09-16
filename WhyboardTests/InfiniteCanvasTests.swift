@@ -31,7 +31,7 @@ struct InfiniteCanvasTests {
   }
 
   @Test func canvasSessionSkipsPagePreviewGeneration() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let note = Note(folderID: UUID(), kind: .infiniteCanvas)
     let page = Page(noteID: note.id, sortOrder: 0)

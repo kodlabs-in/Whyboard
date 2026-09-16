@@ -25,12 +25,8 @@ struct ScaleArchitectureTests {
   }
 
   private func verifyPersistedNotebook(pageCount: Int) async throws {
-    let clock = ContinuousClock()
-    let populationStart = clock.now
     let fixture = try await StressFixtureFactory.notebook(pageCount: pageCount)
     defer { try? FileManager.default.removeItem(at: fixture.directories.root) }
-    let populationDuration = populationStart.duration(to: clock.now)
-    let verificationStart = clock.now
 
     #expect(fixture.pages.count == pageCount)
     #expect(try fixture.context.fetchCount(FetchDescriptor<Page>()) == pageCount)
@@ -38,11 +34,6 @@ struct ScaleArchitectureTests {
     for page in fixture.pages {
       try await verify(page: page, orderedPageIDs: orderedPageIDs, in: fixture)
     }
-    let verificationDuration = verificationStart.duration(to: clock.now)
-    print(
-      "WHYBOARD_STRESS pages=\(pageCount) population=\(populationDuration) "
-        + "verification=\(verificationDuration) "
-        + "thermal=\(ProcessInfo.processInfo.thermalState.rawValue)")
   }
 
   private func verify(

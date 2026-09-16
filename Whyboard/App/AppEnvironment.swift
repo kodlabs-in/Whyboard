@@ -6,18 +6,30 @@ struct AppEnvironment {
   let drawingRepository: DrawingRepository
 
   static func make() throws -> AppEnvironment {
-    let isTesting = ProcessInfo.processInfo.isRunningTests
-    let directories = try AppDirectories.make(isTesting: isTesting)
     let schema = Schema([
       Folder.self,
       Note.self,
       Page.self,
       ImportedDocument.self,
     ])
-    let configuration = modelConfiguration(
-      schema: schema,
-      directories: directories,
-      isTesting: isTesting)
+
+    let directories: AppDirectories
+    let configuration: ModelConfiguration
+    #if DEBUG
+      if ProcessInfo.processInfo.isRunningAutomatedTest {
+        let root = FileManager.default.temporaryDirectory
+          .appending(path: "WhyboardTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        directories = try AppDirectories.make(root: root)
+        configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+      } else {
+        directories = try AppDirectories.make()
+        configuration = persistentModelConfiguration(schema: schema, directories: directories)
+      }
+    #else
+      directories = try AppDirectories.make()
+      configuration = persistentModelConfiguration(schema: schema, directories: directories)
+    #endif
+
     let container = try ModelContainer(
       for: schema,
       configurations: [configuration])
@@ -28,16 +40,11 @@ struct AppEnvironment {
       drawingRepository: DrawingRepository(directories: directories))
   }
 
-  private static func modelConfiguration(
+  private static func persistentModelConfiguration(
     schema: Schema,
-    directories: AppDirectories,
-    isTesting: Bool
+    directories: AppDirectories
   ) -> ModelConfiguration {
-    if isTesting {
-      return ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-    }
-
-    return ModelConfiguration(
+    ModelConfiguration(
       "Whyboard",
       schema: schema,
       url: directories.metadata.appending(path: "Whyboard.store"),
@@ -45,9 +52,11 @@ struct AppEnvironment {
   }
 }
 
-extension ProcessInfo {
-  var isRunningTests: Bool {
-    arguments.contains("-ui-testing")
-      || environment["XCTestConfigurationFilePath"] != nil
+#if DEBUG
+  extension ProcessInfo {
+    var isRunningAutomatedTest: Bool {
+      arguments.contains("-ui-testing")
+        || environment["XCTestConfigurationFilePath"] != nil
+    }
   }
-}
+#endif

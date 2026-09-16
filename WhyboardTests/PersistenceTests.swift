@@ -28,7 +28,7 @@ struct PersistenceTests {
   }
 
   @Test func metadataSurvivesAContainerRelaunch() throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let schema = Schema([Folder.self, Note.self, Page.self])
     let storeURL = directories.metadata.appending(path: "Relaunch.store")
@@ -51,7 +51,7 @@ struct PersistenceTests {
   }
 
   @Test func drawingRoundTripsThroughAtomicStorage() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let noteID = UUID()
@@ -66,7 +66,7 @@ struct PersistenceTests {
   }
 
   @Test func missingDrawingLoadsAsABlankPage() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
 
@@ -76,7 +76,7 @@ struct PersistenceTests {
   }
 
   @Test func pageSessionCoalescesChangesAndIncrementsRevisionAfterSaving() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let note = Note(folderID: UUID())
@@ -101,7 +101,7 @@ struct PersistenceTests {
   }
 
   @Test func previewCacheIsRevisionKeyedAndDisposable() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let noteID = UUID()
@@ -137,7 +137,7 @@ struct PersistenceTests {
   }
 
   @Test func previewCompositesWorkspaceObjectsWithInk() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = DrawingRepository(directories: directories)
     let noteID = UUID()
@@ -179,7 +179,7 @@ struct PersistenceTests {
   }
 
   @Test func damagedDrawingReportsAnErrorWithoutReplacingTheFile() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let noteID = UUID()
     let pageID = UUID()

@@ -24,9 +24,6 @@ struct NoteEditorView: View {
   @State private var duplicatingPageID: UUID?
   @State private var nameEditor: NameEditorRequest?
   @State private var exportController = NoteExportController()
-  @State private var noteOpenInterval: AppSignpostInterval?
-  @State private var jumpInterval: AppSignpostInterval?
-  @State private var jumpTargetID: UUID?
 
   let note: Note
   let drawingRepository: DrawingRepository
@@ -131,8 +128,6 @@ struct NoteEditorView: View {
     }
     .onAppear { prepareEditor() }
     .onDisappear {
-      noteOpenInterval?.end()
-      jumpInterval?.end()
       Task { await controller.close() }
     }
     .onChange(of: orderedPageIDs) { _, _ in controller.reconcile(pages: orderedPages) }
@@ -166,7 +161,6 @@ struct NoteEditorView: View {
       elementSession: elementSession,
       drawingRepository: drawingRepository,
       toolPickerController: toolPickerController,
-      onReady: { pageBecameReady(page.id) },
       onFocus: { controller.focus(page.id) },
       onElementActivate: { element in
         elementEditingController.activate(element, in: elementSession)
@@ -201,9 +195,13 @@ struct NoteEditorView: View {
 
       Button("Arrange Pages", systemImage: "rectangle.3.group", action: showPageOrganizer)
 
-      Button("Jump to Page", systemImage: "arrow.right.doc", action: showJumpToPage)
-        .keyboardShortcut("g", modifiers: .command)
-        .accessibilityIdentifier("jump-to-page")
+      Button(
+        "Jump to Page",
+        systemImage: WhyboardSymbols.jumpToPage,
+        action: showJumpToPage
+      )
+      .keyboardShortcut("g", modifiers: .command)
+      .accessibilityIdentifier("jump-to-page")
 
       WorkspaceObjectToolbar(controller: elementEditingController)
 
@@ -243,8 +241,6 @@ struct NoteEditorView: View {
 
 private extension NoteEditorView {
   private func prepareEditor() {
-    noteOpenInterval?.end()
-    noteOpenInterval = AppSignpost.interval("Note Open")
     controller.configure { try modelContext.save() }
     elementEditingController.configure(
       resolveTarget: elementEditingTarget,
@@ -298,9 +294,6 @@ private extension NoteEditorView {
   }
 
   private func scrollToPage(_ pageID: UUID) {
-    jumpInterval?.end()
-    jumpInterval = AppSignpost.interval("Jump to Page")
-    jumpTargetID = pageID
     controller.focus(pageID)
     Task {
       try? await Task.sleep(for: .milliseconds(120))
@@ -316,23 +309,7 @@ private extension NoteEditorView {
           notification: .announcement,
           argument: "Page \(pageIndex + 1) of \(orderedPages.count)")
       }
-      if controller.isPageLoaded(pageID) {
-        finishJump(to: pageID)
-      }
     }
-  }
-
-  private func pageBecameReady(_ pageID: UUID) {
-    noteOpenInterval?.end()
-    noteOpenInterval = nil
-    finishJump(to: pageID)
-  }
-
-  private func finishJump(to pageID: UUID) {
-    guard jumpTargetID == pageID else { return }
-    jumpInterval?.end()
-    jumpInterval = nil
-    jumpTargetID = nil
   }
 
   private func duplicateCurrentPage() {

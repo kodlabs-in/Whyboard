@@ -94,7 +94,7 @@ struct WorkspaceElementTests {
   }
 
   @Test func attachmentRepositoryCopiesAndDeletesImportedFiles() async throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let repository = AttachmentRepository(directories: directories)
     let source = directories.recovery.appending(path: "sample.jpg")
@@ -114,7 +114,7 @@ struct WorkspaceElementTests {
   }
 
   @Test func attachmentImagesAreDecodedAtADeviceSizedResolution() throws {
-    let directories = try AppDirectories.make(isTesting: true)
+    let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let source = directories.recovery.appending(path: "large-image.png")
     let original = UIGraphicsImageRenderer(size: CGSize(width: 1_024, height: 768)).image {
