@@ -5,6 +5,7 @@ struct AppDirectories: Sendable {
   let metadata: URL
   let drawings: URL
   let previews: URL
+  let attachments: URL
   let recovery: URL
 
   static func make(isTesting: Bool) throws -> AppDirectories {
@@ -14,6 +15,7 @@ struct AppDirectories: Sendable {
       metadata: root.appending(path: "Metadata", directoryHint: .isDirectory),
       drawings: root.appending(path: "Drawings", directoryHint: .isDirectory),
       previews: root.appending(path: "Previews", directoryHint: .isDirectory),
+      attachments: root.appending(path: "Attachments", directoryHint: .isDirectory),
       recovery: root.appending(path: "Recovery", directoryHint: .isDirectory))
     try directories.createIfNeeded()
     return directories
@@ -35,7 +37,7 @@ struct AppDirectories: Sendable {
   }
 
   private func createIfNeeded() throws {
-    for directory in [root, metadata, drawings, previews, recovery] {
+    for directory in [root, metadata, drawings, previews, attachments, recovery] {
       try FileManager.default.createDirectory(
         at: directory,
         withIntermediateDirectories: true)

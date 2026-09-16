@@ -20,6 +20,7 @@ enum DrawingStorageError: LocalizedError, Sendable {
 
 actor DrawingRepository {
   nonisolated let previews: PreviewRepository
+  nonisolated let attachments: AttachmentRepository
 
   private let directories: AppDirectories
   private let fileManager: FileManager
@@ -28,6 +29,7 @@ actor DrawingRepository {
     self.directories = directories
     self.fileManager = fileManager
     previews = PreviewRepository(directories: directories)
+    attachments = AttachmentRepository(directories: directories)
   }
 
   func load(pageID: UUID, noteID: UUID) throws -> PKDrawing {
@@ -70,11 +72,13 @@ actor DrawingRepository {
   func deletePage(pageID: UUID, noteID: UUID) async {
     try? fileManager.removeItem(at: drawingURL(pageID: pageID, noteID: noteID))
     await previews.deletePage(pageID: pageID, noteID: noteID)
+    await attachments.deletePage(pageID: pageID, noteID: noteID)
   }
 
   func deleteNote(noteID: UUID) async {
     try? fileManager.removeItem(at: noteDrawingDirectory(noteID: noteID))
     await previews.deleteNote(noteID: noteID)
+    await attachments.deleteNote(noteID: noteID)
   }
 
   private func drawingURL(pageID: UUID, noteID: UUID) -> URL {

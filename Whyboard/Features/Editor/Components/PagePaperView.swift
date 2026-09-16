@@ -8,10 +8,13 @@ struct PagePaperView: View {
   let isLive: Bool
   let paperStyle: NotePaperStyle
   let drawsWithFinger: Bool
+  let interactionMode: WorkspaceInteractionMode
   let session: PageSession
+  let elementSession: ElementSession
   let drawingRepository: DrawingRepository
   let toolPickerController: ToolPickerController
   let onFocus: () -> Void
+  let onElementActivate: (WorkspaceElement) -> Void
   let onInsertBefore: () -> Void
   let onInsertAfter: () -> Void
   let onDelete: () -> Void
@@ -59,13 +62,17 @@ struct PagePaperView: View {
 
   @ViewBuilder
   private var pageContent: some View {
-    if isLive, session.isLoaded {
-      CanonicalCanvasView(
-        drawing: session.drawing,
-        drawsWithFinger: drawsWithFinger,
-        toolPickerController: toolPickerController,
-        onDrawingChanged: session.drawingDidChange,
-        onFocused: onFocus)
+    if isLive {
+      livePageContent
+    } else {
+      dormantPageContent
+    }
+  }
+
+  @ViewBuilder
+  private var livePageContent: some View {
+    if session.isLoaded {
+      canonicalWorkspace
     } else if case .failed(let message) = session.state {
       ContentUnavailableView {
         Label("Page unavailable", systemImage: "exclamationmark.triangle")
@@ -76,17 +83,78 @@ struct PagePaperView: View {
           Task { await session.loadIfNeeded() }
         }
       }
-    } else if isLive {
+    } else {
       ProgressView("Loading page")
         .tint(WhyboardTheme.accent)
-    } else if let preview {
-      Image(uiImage: preview)
-        .resizable()
-        .scaledToFit()
-        .accessibilityHidden(true)
-    } else {
-      Color.clear
     }
+  }
+
+  private var canonicalWorkspace: some View {
+    GeometryReader { geometry in
+      let transform = WorkspaceTransform(
+        scale: geometry.size.width / CanonicalPage.size.width,
+        contentOffset: .zero)
+
+      ZStack {
+        if interactionMode == .arrange {
+          Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture {
+              onFocus()
+              elementSession.select(nil)
+            }
+        }
+
+        elementVisualLayer(transform: transform)
+
+        CanonicalCanvasView(
+          drawing: session.drawing,
+          drawsWithFinger: drawsWithFinger,
+          toolPickerController: toolPickerController,
+          onDrawingChanged: session.drawingDidChange,
+          onFocused: onFocus
+        )
+        .allowsHitTesting(interactionMode == .draw)
+
+        if interactionMode == .arrange {
+          WorkspaceElementInteractionLayer(
+            session: elementSession,
+            transform: transform,
+            onFocus: onFocus,
+            onActivate: onElementActivate)
+        }
+      }
+    }
+  }
+
+  private var dormantPageContent: some View {
+    GeometryReader { geometry in
+      let transform = WorkspaceTransform(
+        scale: geometry.size.width / CanonicalPage.size.width,
+        contentOffset: .zero)
+
+      ZStack {
+        elementVisualLayer(transform: transform)
+        if let preview {
+          Image(uiImage: preview)
+            .resizable()
+            .scaledToFit()
+            .accessibilityHidden(true)
+        }
+      }
+    }
+  }
+
+  private func elementVisualLayer(transform: WorkspaceTransform) -> some View {
+    WorkspaceElementVisualLayer(
+      elements: elementSession.orderedElements,
+      noteID: page.noteID,
+      pageID: page.id,
+      attachments: drawingRepository.attachments,
+      transform: transform,
+      onImageAspectRatio: { elementID, aspectRatio in
+        elementSession.updateImageAspectRatio(aspectRatio, for: elementID)
+      })
   }
 
   private var pageHeader: some View {

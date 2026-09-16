@@ -54,7 +54,46 @@ final class WhyboardUITests: XCTestCase {
     let zoomPercentage = app.descendants(matching: .any)["canvas-zoom-percentage"]
     XCTAssertTrue(zoomPercentage.waitForExistence(timeout: 3))
     XCTAssertTrue(app.staticTexts["125%"].waitForExistence(timeout: 3))
+
+    app.buttons["Insert"].tap()
+    app.buttons["Shape"].tap()
+    app.buttons["Rectangle"].tap()
+    XCTAssertTrue(app.otherElements["Rectangle"].waitForExistence(timeout: 3))
+
+    let shape = app.otherElements["Rectangle"].firstMatch
+    let resizeHandle = app.otherElements["Resize object"].firstMatch
+    XCTAssertTrue(shape.waitForExistence(timeout: 3))
+    XCTAssertTrue(resizeHandle.waitForExistence(timeout: 3))
+    let initialFrame = shape.frame
+    let resizeStart = resizeHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    resizeStart.press(
+      forDuration: 0.1,
+      thenDragTo: resizeStart.withOffset(CGVector(dx: 90, dy: 60)))
+
+    XCTAssertGreaterThan(shape.frame.width, initialFrame.width)
+    XCTAssertGreaterThan(shape.frame.height, initialFrame.height)
     attachScreenshot(named: "Infinite canvas editor")
+  }
+
+  @MainActor
+  func testAddsEditableTextToAnInfinitePagesNote() throws {
+    let app = try XCTUnwrap(app)
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infinitePages", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+
+    app.buttons["Insert"].tap()
+    app.buttons["Text"].tap()
+    XCTAssertTrue(app.navigationBars["Edit Text"].waitForExistence(timeout: 3))
+    let editor = app.textViews.firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 3))
+    editor.tap()
+    editor.typeText("A visual idea")
+    app.buttons["Save"].tap()
+
+    let textObject = app.otherElements["Text, A visual idea"]
+    XCTAssertTrue(textObject.waitForExistence(timeout: 3))
+    attachScreenshot(named: "Text object on page")
   }
 
   @MainActor

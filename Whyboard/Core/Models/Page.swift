@@ -10,6 +10,7 @@ final class Page {
   var drawingRelativePath: String
   var createdAt: Date
   var updatedAt: Date
+  var workspaceElementsData: Data?
 
   init(
     id: UUID = UUID(),

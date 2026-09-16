@@ -14,6 +14,7 @@ struct InfiniteCanvasEditorView: View {
   @State private var editorController: EditorController
   @State private var canvasController: InfiniteCanvasController
   @State private var toolPickerController = ToolPickerController()
+  @State private var elementEditingController: WorkspaceElementEditingController
   @State private var nameEditor: NameEditorRequest?
 
   let note: Note
@@ -31,6 +32,10 @@ struct InfiniteCanvasEditorView: View {
     _canvasController = State(
       initialValue: InfiniteCanvasController(
         initialViewport: InfiniteCanvasViewport(storedIn: note)))
+    _elementEditingController = State(
+      initialValue: WorkspaceElementEditingController(
+        noteID: note.id,
+        attachments: drawingRepository.attachments))
   }
 
   private var page: Page? {
@@ -50,6 +55,7 @@ struct InfiniteCanvasEditorView: View {
       .toolbarBackground(WhyboardTheme.chromeBackground, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
       .toolbar { editorToolbar }
+      .workspaceElementEditing(elementEditingController)
       .safeAreaInset(edge: .top) {
         EditorSaveErrorBanner(status: editorController.saveStatus) {
           Task { await editorController.flushAll() }
@@ -73,13 +79,22 @@ struct InfiniteCanvasEditorView: View {
   private var canvasContent: some View {
     if let page {
       let session = editorController.session(for: page, generatesPreview: false)
+      let elementSession = editorController.elementSession(
+        for: page,
+        canvasSize: InfiniteCanvasMetrics.contentSize)
       InfiniteCanvasSurface(
         page: page,
         session: session,
-        paperColor: UIColor(WhyboardTheme.paperColor(for: resolvedPaperStyle)),
+        elementSession: elementSession,
         drawsWithFinger: drawsWithFinger,
+        interactionMode: elementEditingController.interactionMode,
         canvasController: canvasController,
-        toolPickerController: toolPickerController)
+        toolPickerController: toolPickerController,
+        attachments: drawingRepository.attachments,
+        onFocus: { editorController.focus(page.id) },
+        onElementActivate: { element in
+          elementEditingController.activate(element, in: elementSession)
+        })
     } else {
       ProgressView("Preparing canvas")
         .tint(WhyboardTheme.accent)
@@ -127,6 +142,8 @@ struct InfiniteCanvasEditorView: View {
 
       Button("Reset View", systemImage: "scope", action: canvasController.resetView)
 
+      WorkspaceObjectToolbar(controller: elementEditingController)
+
       NoteOptionsMenu(
         paperStyle: paperStyleSelection,
         drawsWithFinger: $drawsWithFinger,
@@ -149,6 +166,9 @@ struct InfiniteCanvasEditorView: View {
   private func prepareEditor() {
     editorController.configure { try modelContext.save() }
     canvasController.configure(onViewportChanged: persistViewport)
+    elementEditingController.configure(
+      resolveTarget: elementEditingTarget,
+      onError: { editorController.errorMessage = $0 })
     note.lastOpenedAt = Date()
 
     if pages.isEmpty {
@@ -156,6 +176,16 @@ struct InfiniteCanvasEditorView: View {
     } else {
       try? modelContext.save()
     }
+  }
+
+  private func elementEditingTarget(for requestedPageID: UUID?) -> ElementEditingTarget? {
+    guard let page, requestedPageID == nil || requestedPageID == page.id else { return nil }
+    return ElementEditingTarget(
+      pageID: page.id,
+      session: editorController.elementSession(
+        for: page,
+        canvasSize: InfiniteCanvasMetrics.contentSize),
+      insertionPoint: canvasController.visibleCenter)
   }
 
   private func saveAndClose() {
@@ -207,23 +237,19 @@ struct InfiniteCanvasEditorView: View {
 private struct InfiniteCanvasSurface: View {
   let page: Page
   let session: PageSession
-  let paperColor: UIColor
+  let elementSession: ElementSession
   let drawsWithFinger: Bool
+  let interactionMode: WorkspaceInteractionMode
   let canvasController: InfiniteCanvasController
   let toolPickerController: ToolPickerController
+  let attachments: AttachmentRepository
+  let onFocus: () -> Void
+  let onElementActivate: (WorkspaceElement) -> Void
 
   var body: some View {
     Group {
       if session.isLoaded {
-        InfiniteCanvasView(
-          drawing: session.drawing,
-          paperColor: paperColor,
-          drawsWithFinger: drawsWithFinger,
-          canvasController: canvasController,
-          toolPickerController: toolPickerController,
-          onDrawingChanged: session.drawingDidChange
-        )
-        .accessibilityIdentifier("infinite-canvas")
+        infiniteWorkspace
       } else if case .failed(let message) = session.state {
         ContentUnavailableView {
           Label("Canvas unavailable", systemImage: "exclamationmark.triangle")
@@ -241,5 +267,39 @@ private struct InfiniteCanvasSurface: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .task(id: page.id) { await session.loadIfNeeded() }
+  }
+
+  private var infiniteWorkspace: some View {
+    let transform = WorkspaceTransform(
+      scale: canvasController.zoomScale,
+      contentOffset: canvasController.contentOffset)
+
+    return ZStack {
+      WorkspaceElementVisualLayer(
+        elements: elementSession.orderedElements,
+        noteID: page.noteID,
+        pageID: page.id,
+        attachments: attachments,
+        transform: transform,
+        onImageAspectRatio: { elementID, aspectRatio in
+          elementSession.updateImageAspectRatio(aspectRatio, for: elementID)
+        })
+
+      InfiniteCanvasView(
+        drawing: session.drawing,
+        drawsWithFinger: drawsWithFinger,
+        canvasController: canvasController,
+        toolPickerController: toolPickerController,
+        onDrawingChanged: session.drawingDidChange)
+
+      if interactionMode == .arrange {
+        WorkspaceElementInteractionLayer(
+          session: elementSession,
+          transform: transform,
+          onFocus: onFocus,
+          onActivate: onElementActivate)
+      }
+    }
+    .accessibilityIdentifier("infinite-canvas")
   }
 }

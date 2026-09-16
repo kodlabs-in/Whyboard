@@ -4,7 +4,6 @@ import UIKit
 
 struct InfiniteCanvasView: UIViewRepresentable {
   let drawing: PKDrawing
-  let paperColor: UIColor
   let drawsWithFinger: Bool
   let canvasController: InfiniteCanvasController
   let toolPickerController: ToolPickerController
@@ -33,7 +32,7 @@ struct InfiniteCanvasView: UIViewRepresentable {
   func updateUIView(_ hostView: InfiniteCanvasHostView, context: Context) {
     context.coordinator.update(onDrawingChanged: onDrawingChanged)
     let canvasView = hostView.canvasView
-    canvasView.backgroundColor = paperColor
+    canvasView.backgroundColor = .clear
     canvasView.drawingPolicy = drawsWithFinger ? .anyInput : .pencilOnly
   }
 
@@ -43,8 +42,8 @@ struct InfiniteCanvasView: UIViewRepresentable {
   }
 
   private func configure(_ canvasView: PKCanvasView) {
-    canvasView.backgroundColor = paperColor
-    canvasView.isOpaque = true
+    canvasView.backgroundColor = .clear
+    canvasView.isOpaque = false
     canvasView.drawingPolicy = drawsWithFinger ? .anyInput : .pencilOnly
     canvasView.contentSize = InfiniteCanvasMetrics.contentSize
     canvasView.minimumZoomScale = InfiniteCanvasMetrics.minimumZoomScale
@@ -106,7 +105,12 @@ struct InfiniteCanvasView: UIViewRepresentable {
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
       guard let canvasView = scrollView as? PKCanvasView else { return }
-      canvasController.syncZoomScale(from: canvasView)
+      canvasController.syncViewport(from: canvasView)
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+      guard let canvasView = scrollView as? PKCanvasView else { return }
+      canvasController.syncViewport(from: canvasView)
     }
 
     func scrollViewDidEndZooming(

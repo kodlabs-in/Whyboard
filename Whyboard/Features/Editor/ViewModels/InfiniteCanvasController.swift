@@ -5,6 +5,8 @@ import PencilKit
 @Observable
 final class InfiniteCanvasController {
   private(set) var zoomPercentage: String
+  private(set) var zoomScale: CGFloat
+  private(set) var contentOffset: CGPoint
 
   @ObservationIgnored private weak var canvasView: PKCanvasView?
   @ObservationIgnored private let initialViewport: InfiniteCanvasViewport?
@@ -14,6 +16,8 @@ final class InfiniteCanvasController {
     self.initialViewport = initialViewport
     let zoomScale = initialViewport?.zoomScale ?? InfiniteCanvasMetrics.defaultZoomScale
     self.zoomPercentage = Self.percentage(for: zoomScale)
+    self.zoomScale = zoomScale
+    self.contentOffset = initialViewport?.contentOffset ?? .zero
   }
 
   func configure(onViewportChanged: @escaping (InfiniteCanvasViewport) -> Void) {
@@ -24,6 +28,7 @@ final class InfiniteCanvasController {
     guard self.canvasView !== canvasView else { return }
     self.canvasView = canvasView
     applyInitialViewport(to: canvasView)
+    syncViewport(from: canvasView)
   }
 
   func detach(_ canvasView: PKCanvasView) {
@@ -31,10 +36,13 @@ final class InfiniteCanvasController {
     self.canvasView = nil
   }
 
-  func syncZoomScale(from canvasView: PKCanvasView) {
+  func syncViewport(from canvasView: PKCanvasView) {
+    zoomScale = canvasView.zoomScale
+    contentOffset = canvasView.contentOffset
     let nextPercentage = Self.percentage(for: canvasView.zoomScale)
-    guard nextPercentage != zoomPercentage else { return }
-    zoomPercentage = nextPercentage
+    if nextPercentage != zoomPercentage {
+      zoomPercentage = nextPercentage
+    }
   }
 
   func zoomIn() {
@@ -49,7 +57,18 @@ final class InfiniteCanvasController {
     guard let canvasView else { return }
     canvasView.setZoomScale(InfiniteCanvasMetrics.defaultZoomScale, animated: false)
     canvasView.setContentOffset(centeredOffset(in: canvasView), animated: true)
-    syncZoomScale(from: canvasView)
+    syncViewport(from: canvasView)
+  }
+
+  var visibleCenter: CGPoint {
+    guard let canvasView else {
+      return CGPoint(
+        x: InfiniteCanvasMetrics.contentSize.width / 2,
+        y: InfiniteCanvasMetrics.contentSize.height / 2)
+    }
+    return CGPoint(
+      x: (canvasView.contentOffset.x + canvasView.bounds.width / 2) / canvasView.zoomScale,
+      y: (canvasView.contentOffset.y + canvasView.bounds.height / 2) / canvasView.zoomScale)
   }
 
   func persistCurrentViewport() {

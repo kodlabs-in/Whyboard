@@ -14,6 +14,7 @@ struct NoteEditorView: View {
   private var defaultPaperStyleRawValue = NotePaperStyle.defaultStyle.rawValue
   @State private var controller: EditorController
   @State private var toolPickerController = ToolPickerController()
+  @State private var elementEditingController: WorkspaceElementEditingController
   @State private var scrollPosition: ScrollPosition
   @State private var currentScrollOffset: Double
   @State private var pageToDelete: Page?
@@ -32,6 +33,10 @@ struct NoteEditorView: View {
       sort: \Page.sortOrder)
     _controller = State(
       initialValue: EditorController(note: note, drawingRepository: drawingRepository))
+    _elementEditingController = State(
+      initialValue: WorkspaceElementEditingController(
+        noteID: note.id,
+        attachments: drawingRepository.attachments))
     _scrollPosition = State(
       initialValue: ScrollPosition(y: max(0, note.lastScrollOffset)))
     _currentScrollOffset = State(initialValue: max(0, note.lastScrollOffset))
@@ -81,6 +86,7 @@ struct NoteEditorView: View {
     .toolbarBackground(WhyboardTheme.chromeBackground, for: .navigationBar)
     .toolbarBackground(.visible, for: .navigationBar)
     .toolbar { editorToolbar }
+    .workspaceElementEditing(elementEditingController)
     .safeAreaInset(edge: .top) {
       EditorSaveErrorBanner(status: controller.saveStatus) {
         Task { await controller.flushAll() }
@@ -123,6 +129,7 @@ struct NoteEditorView: View {
 
   private func pageView(_ page: Page, index: Int, availableWidth: CGFloat) -> some View {
     let session = controller.session(for: page)
+    let elementSession = controller.elementSession(for: page, canvasSize: CanonicalPage.size)
     let pageWidth = max(260, min(availableWidth - 48, 900))
 
     return PagePaperView(
@@ -132,10 +139,15 @@ struct NoteEditorView: View {
       isLive: controller.livePageIDs.contains(page.id),
       paperStyle: resolvedPaperStyle,
       drawsWithFinger: drawsWithFinger,
+      interactionMode: elementEditingController.interactionMode,
       session: session,
+      elementSession: elementSession,
       drawingRepository: drawingRepository,
       toolPickerController: toolPickerController,
       onFocus: { controller.focus(page.id) },
+      onElementActivate: { element in
+        elementEditingController.activate(element, in: elementSession)
+      },
       onInsertBefore: { insertPage(relativeTo: page, after: false) },
       onInsertAfter: { insertPage(relativeTo: page, after: true) },
       onDelete: { pageToDelete = page }
@@ -178,6 +190,8 @@ struct NoteEditorView: View {
 
       Button("Arrange Pages", systemImage: "rectangle.3.group", action: showPageOrganizer)
 
+      WorkspaceObjectToolbar(controller: elementEditingController)
+
       NoteOptionsMenu(
         paperStyle: paperStyleSelection,
         drawsWithFinger: $drawsWithFinger,
@@ -206,9 +220,14 @@ struct NoteEditorView: View {
         try? modelContext.save()
       })
   }
+}
 
+private extension NoteEditorView {
   private func prepareEditor() {
     controller.configure { try modelContext.save() }
+    elementEditingController.configure(
+      resolveTarget: elementEditingTarget,
+      onError: { controller.errorMessage = $0 })
     note.lastOpenedAt = Date()
 
     if pages.isEmpty {
@@ -216,6 +235,15 @@ struct NoteEditorView: View {
     } else {
       try? modelContext.save()
     }
+  }
+
+  private func elementEditingTarget(for requestedPageID: UUID?) -> ElementEditingTarget? {
+    let pageID = requestedPageID ?? controller.activePageID ?? orderedPages.first?.id
+    guard let page = orderedPages.first(where: { $0.id == pageID }) else { return nil }
+    return ElementEditingTarget(
+      pageID: page.id,
+      session: controller.elementSession(for: page, canvasSize: CanonicalPage.size),
+      insertionPoint: CGPoint(x: CanonicalPage.size.width / 2, y: CanonicalPage.size.height / 2))
   }
 
   private func appendPage() {

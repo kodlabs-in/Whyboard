@@ -21,6 +21,7 @@ final class EditorController {
   private let drawingRepository: DrawingRepository
   private var visiblePageIDs: Set<UUID> = []
   private var sessions: [UUID: PageSession] = [:]
+  private var elementSessions: [UUID: ElementSession] = [:]
   private var saveMetadata: (() throws -> Void)?
 
   init(note: Note, drawingRepository: DrawingRepository) {
@@ -48,6 +49,21 @@ final class EditorController {
     return session
   }
 
+  func elementSession(for page: Page, canvasSize: CGSize) -> ElementSession {
+    if let session = elementSessions[page.id] {
+      return session
+    }
+
+    let session = ElementSession(
+      page: page,
+      note: note,
+      canvasSize: canvasSize,
+      saveMetadata: { [weak self] in try self?.saveMetadata?() },
+      onError: { [weak self] message in self?.errorMessage = message })
+    elementSessions[page.id] = session
+    return session
+  }
+
   func pageAppeared(_ pageID: UUID, orderedPageIDs: [UUID]) {
     visiblePageIDs.insert(pageID)
     activePageID = activePageID ?? pageID
@@ -69,6 +85,7 @@ final class EditorController {
     for pageID in removedIDs {
       sessions[pageID]?.cancel()
       sessions[pageID] = nil
+      elementSessions[pageID] = nil
     }
   }
 
@@ -126,6 +143,7 @@ final class EditorController {
 
     sessions[page.id]?.cancel()
     sessions[page.id] = nil
+    elementSessions[page.id] = nil
     context.delete(page)
     PageOrdering.renumber(PageOrdering.ordered(pages.filter { $0.id != page.id }))
     note.updatedAt = Date()
