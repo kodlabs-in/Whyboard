@@ -8,7 +8,7 @@ SIMULATOR_ID ?= $(shell xcrun simctl list devices available | sed -nE '/iPad/ { 
 
 ifeq ($(strip $(DEVICE_ID)),)
 TEST_PLATFORM := iOS Simulator
-TEST_DEVICE_ID := $(SIMULATOR_ID)
+TEST_DEVICE_ID = $(SIMULATOR_ID)
 TEST_SIGNING_ARGUMENT := CODE_SIGNING_ALLOWED=NO
 else
 TEST_PLATFORM := iOS

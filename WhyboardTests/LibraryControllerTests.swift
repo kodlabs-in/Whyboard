@@ -20,6 +20,7 @@ struct LibraryControllerTests {
     #expect(notes.count == 1)
     #expect(notes.first?.folderID == unfiled.id)
     #expect(notes.first?.kind == .infinitePages)
+    #expect(notes.first?.paperStyle == .white)
     #expect(pages.count == 1)
     #expect(pages.first?.noteID == notes.first?.id)
     #expect(createdNoteID == notes.first?.id)
@@ -99,18 +100,29 @@ struct LibraryControllerTests {
         == [mathNote.id])
   }
 
-  @Test func notePaperStyleCanFollowDefaultOrOverrideIt() {
-    let note = Note(folderID: UUID())
+  @Test func notePaperStyleIsStoredIndependentlyFromTheDefault() {
+    let note = Note(folderID: UUID(), paperStyle: .black)
 
-    #expect(note.paperStyle == .automatic)
-    #expect(note.paperStyle.resolved(defaultRawValue: NotePaperStyle.cream.rawValue) == .cream)
-
-    note.paperStyle = .black
     #expect(note.paperStyle == .black)
+    #expect(note.paperStyleRawValue == NotePaperStyle.black.rawValue)
     #expect(note.paperStyle.resolved(defaultRawValue: NotePaperStyle.white.rawValue) == .black)
+  }
 
-    note.paperStyle = .automatic
-    #expect(note.paperStyleRawValue == nil)
+  @Test func noteCreationSnapshotsTheSelectedDefaultPaperStyle() throws {
+    let container = try makeContainer()
+    let context = container.mainContext
+    let unfiled = Folder(name: "Unfiled Notes", isSystem: true)
+    context.insert(unfiled)
+
+    _ = LibraryController().createNote(
+      in: .root,
+      paperStyle: .black,
+      folders: [unfiled],
+      context: context)
+
+    let note = try #require(context.fetch(FetchDescriptor<Note>()).first)
+    #expect(note.paperStyle == .black)
+    #expect(note.paperStyleRawValue == NotePaperStyle.black.rawValue)
   }
 
   @Test func missingOrUnknownNoteKindMigratesToInfinitePages() {

@@ -9,8 +9,6 @@ struct InfiniteCanvasEditorView: View {
   @Query private var pages: [Page]
 
   @AppStorage("drawWithFinger", store: AppPreferences.store) private var drawsWithFinger = false
-  @AppStorage(NotePaperStyle.defaultStorageKey, store: AppPreferences.store)
-  private var defaultPaperStyleRawValue = NotePaperStyle.defaultStyle.rawValue
   @State private var editorController: EditorController
   @State private var canvasController: InfiniteCanvasController
   @State private var toolPickerController = ToolPickerController()
@@ -44,7 +42,7 @@ struct InfiniteCanvasEditorView: View {
   }
 
   private var resolvedPaperStyle: NotePaperStyle {
-    note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
+    note.paperStyle.resolved(defaultRawValue: NotePaperStyle.defaultStyle.rawValue)
   }
 
   var body: some View {

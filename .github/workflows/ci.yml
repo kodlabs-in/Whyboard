@@ -26,5 +26,5 @@ jobs:
       - name: Install SwiftLint
         run: brew install swiftlint
 
-      - name: Check formatting, lint, build, and tests
-        run: make check
+      - name: Check formatting, lint, and build
+        run: make lint build

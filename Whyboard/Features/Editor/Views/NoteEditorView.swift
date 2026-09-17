@@ -11,8 +11,6 @@ struct NoteEditorView: View {
   @Query private var pages: [Page]
 
   @AppStorage("drawWithFinger", store: AppPreferences.store) private var drawsWithFinger = false
-  @AppStorage(NotePaperStyle.defaultStorageKey, store: AppPreferences.store)
-  private var defaultPaperStyleRawValue = NotePaperStyle.defaultStyle.rawValue
   @State private var controller: EditorController
   @State private var toolPickerController = ToolPickerController()
   @State private var elementEditingController: WorkspaceElementEditingController
@@ -51,7 +49,7 @@ struct NoteEditorView: View {
   }
   private var orderedPageIDs: [UUID] { orderedPages.map(\.id) }
   private var resolvedPaperStyle: NotePaperStyle {
-    note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
+    note.paperStyle.resolved(defaultRawValue: NotePaperStyle.defaultStyle.rawValue)
   }
 
   var body: some View {

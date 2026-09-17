@@ -52,7 +52,8 @@ actor DrawingRepository {
     let cachedImage = await previews.preview(
       pageID: descriptor.pageID,
       noteID: descriptor.noteID,
-      revision: descriptor.revision)
+      revision: descriptor.revision,
+      paperStyle: descriptor.paperStyle)
     if let cachedImage { return cachedImage }
 
     guard !Task.isCancelled else { return nil }
@@ -72,7 +73,8 @@ actor DrawingRepository {
     return await previews.preview(
       pageID: descriptor.pageID,
       noteID: descriptor.noteID,
-      revision: descriptor.revision)
+      revision: descriptor.revision,
+      paperStyle: descriptor.paperStyle)
   }
 
   func load(pageID: UUID, noteID: UUID) throws -> PKDrawing {

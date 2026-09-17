@@ -34,13 +34,27 @@ actor PreviewRepository {
     imageCache.totalCostLimit = 64 * 1_024 * 1_024
   }
 
-  func preview(pageID: UUID, noteID: UUID, revision: Int64) -> UIImage? {
+  func preview(
+    pageID: UUID,
+    noteID: UUID,
+    revision: Int64,
+    paperStyle: NotePaperStyle = .white
+  ) -> UIImage? {
     let key = PreviewKey(noteID: noteID, pageID: pageID)
-    let cacheKey = cacheKey(pageID: pageID, noteID: noteID, revision: revision)
+    let resolvedPaperStyle = resolvedPaperStyle(paperStyle)
+    let cacheKey = cacheKey(
+      pageID: pageID,
+      noteID: noteID,
+      revision: revision,
+      paperStyle: resolvedPaperStyle)
     if let image = imageCache.object(forKey: cacheKey as NSString) {
       return image
     }
-    let url = previewURL(pageID: pageID, noteID: noteID, revision: revision)
+    let url = previewURL(
+      pageID: pageID,
+      noteID: noteID,
+      revision: revision,
+      paperStyle: resolvedPaperStyle)
     guard let data = try? Data(contentsOf: url) else { return nil }
     guard !Task.isCancelled, let image = UIImage(data: data) else { return nil }
     cache(image, with: cacheKey, for: key)
@@ -58,6 +72,7 @@ actor PreviewRepository {
     revision: Int64
   ) throws {
     let key = PreviewKey(noteID: noteID, pageID: pageID)
+    let resolvedPaperStyle = resolvedPaperStyle(paperStyle)
     guard revision >= newestStoredRevision[key, default: -1] else { return }
     let noteDirectory = notePreviewDirectory(noteID: noteID)
     try createDirectory(noteDirectory)
@@ -66,12 +81,16 @@ actor PreviewRepository {
         drawing: drawing,
         elements: elements,
         layout: layout,
-        paperStyle: paperStyle,
+        paperStyle: resolvedPaperStyle,
         background: background),
       noteID: noteID,
       pageID: pageID)
     let data = try encodedPreview(for: image)
-    let destination = previewURL(pageID: pageID, noteID: noteID, revision: revision)
+    let destination = previewURL(
+      pageID: pageID,
+      noteID: noteID,
+      revision: revision,
+      paperStyle: resolvedPaperStyle)
 
     do {
       try data.write(to: destination, options: [.atomic, .completeFileProtection])
@@ -79,7 +98,11 @@ actor PreviewRepository {
       removeCachedImages(for: key)
       cache(
         image,
-        with: cacheKey(pageID: pageID, noteID: noteID, revision: revision),
+        with: cacheKey(
+          pageID: pageID,
+          noteID: noteID,
+          revision: revision,
+          paperStyle: resolvedPaperStyle),
         for: key)
       removeObsoletePreviews(
         pageID: pageID,
@@ -122,11 +145,16 @@ actor PreviewRepository {
       .appending(path: noteID.uuidString.lowercased(), directoryHint: .isDirectory)
   }
 
-  private func previewURL(pageID: UUID, noteID: UUID, revision: Int64) -> URL {
-    notePreviewDirectory(noteID: noteID)
-      .appending(
-        path:
-          "\(pageID.uuidString.lowercased())-v\(PagePreviewRenderer.version)-r\(revision).heic")
+  private func previewURL(
+    pageID: UUID,
+    noteID: UUID,
+    revision: Int64,
+    paperStyle: NotePaperStyle
+  ) -> URL {
+    let filename =
+      "\(pageID.uuidString.lowercased())-v\(PagePreviewRenderer.version)"
+      + "-r\(revision)-\(paperStyle.rawValue).heic"
+    return notePreviewDirectory(noteID: noteID).appending(path: filename)
   }
 
   private func encodedPreview(for image: UIImage) throws -> Data {
@@ -172,8 +200,17 @@ actor PreviewRepository {
     }
   }
 
-  private func cacheKey(pageID: UUID, noteID: UUID, revision: Int64) -> String {
-    "\(noteID.uuidString)-\(pageID.uuidString)-\(revision)"
+  private func cacheKey(
+    pageID: UUID,
+    noteID: UUID,
+    revision: Int64,
+    paperStyle: NotePaperStyle
+  ) -> String {
+    "\(noteID.uuidString)-\(pageID.uuidString)-\(revision)-\(paperStyle.rawValue)"
+  }
+
+  private func resolvedPaperStyle(_ paperStyle: NotePaperStyle) -> NotePaperStyle {
+    paperStyle == .automatic ? .defaultStyle : paperStyle
   }
 
   private func cache(_ image: UIImage, with cacheKey: String, for key: PreviewKey) {

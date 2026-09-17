@@ -107,7 +107,7 @@ struct PagePreviewDescriptor: Equatable, Sendable {
   }
 
   var taskID: String {
-    "\(pageID.uuidString)-\(revision)-v\(PagePreviewRenderer.version)"
+    "\(pageID.uuidString)-\(revision)-\(paperStyle.rawValue)-v\(PagePreviewRenderer.version)"
   }
 }
 
@@ -134,7 +134,7 @@ struct ImportedPDFBackground: Equatable, Sendable {
 }
 
 nonisolated struct PagePreviewRenderer: Sendable {
-  static let version = 3
+  static let version = 4
 
   private static let maximumPixelDimension: CGFloat = 640
   private static let openShapes: Set<WorkspaceShapeKind> = [.line, .arrow]

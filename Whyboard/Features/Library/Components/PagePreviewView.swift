@@ -30,9 +30,6 @@ struct PagePreviewView: View {
 }
 
 struct PageThumbnailView: View {
-  @AppStorage(NotePaperStyle.defaultStorageKey, store: AppPreferences.store)
-  private var defaultPaperStyleRawValue = NotePaperStyle.defaultStyle.rawValue
-
   let note: Note
   let page: Page
   let pageNumber: Int
@@ -40,7 +37,7 @@ struct PageThumbnailView: View {
   var isSelected = false
 
   private var paperStyle: NotePaperStyle {
-    note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
+    note.paperStyle.resolved(defaultRawValue: NotePaperStyle.defaultStyle.rawValue)
   }
 
   var body: some View {

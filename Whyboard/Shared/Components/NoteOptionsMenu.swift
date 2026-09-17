@@ -30,8 +30,8 @@ struct NoteOptionsMenu: View {
           .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
       }
       Divider()
-      Picker("Paper Color", selection: $paperStyle) {
-        ForEach(NotePaperStyle.allCases) { style in
+      Picker("Background Color", selection: $paperStyle) {
+        ForEach(NotePaperStyle.selectableStyles) { style in
           Text(style.name).tag(style)
         }
       }

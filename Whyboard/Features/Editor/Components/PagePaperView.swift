@@ -52,13 +52,14 @@ struct PagePaperView: View {
         preview = await drawingRepository.previews.preview(
           pageID: page.id,
           noteID: page.noteID,
-          revision: page.contentRevision)
+          revision: page.contentRevision,
+          paperStyle: paperStyle)
       }
     }
   }
 
   private var previewTaskID: String {
-    "\(isLive)-\(page.contentRevision)"
+    "\(isLive)-\(page.contentRevision)-\(paperStyle.rawValue)"
   }
 
   @ViewBuilder

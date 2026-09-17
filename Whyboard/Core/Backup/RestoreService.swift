@@ -276,6 +276,13 @@ struct RestoreService {
     _ record: BackupNoteRecord,
     identityMap: RestoreIdentityMap
   ) -> Note {
+    let storedDefault =
+      NotePaperStyle(
+        rawValue: AppPreferences.store.string(forKey: NotePaperStyle.defaultStorageKey) ?? ""
+      ) ?? .defaultStyle
+    let restoredPaperStyle =
+      NotePaperStyle(rawValue: record.paperStyleRawValue ?? "")
+      ?? (storedDefault == .automatic ? .defaultStyle : storedDefault)
     let note = Note(
       id: identityMap.notes[record.id] ?? UUID(),
       folderID: identityMap.folders[record.folderID] ?? UUID(),
@@ -284,7 +291,7 @@ struct RestoreService {
       updatedAt: record.updatedAt,
       lastOpenedAt: record.lastOpenedAt,
       lastScrollOffset: record.lastScrollOffset,
-      paperStyle: NotePaperStyle(rawValue: record.paperStyleRawValue ?? "") ?? .automatic,
+      paperStyle: restoredPaperStyle,
       kind: NoteKind(rawValue: record.noteKindRawValue ?? "") ?? .infinitePages,
       isFavorite: record.isFavorite)
     note.canvasOffsetX = record.canvasOffsetX

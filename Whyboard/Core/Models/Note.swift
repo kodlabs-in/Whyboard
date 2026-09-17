@@ -25,7 +25,7 @@ final class Note {
     updatedAt: Date = Date(),
     lastOpenedAt: Date? = nil,
     lastScrollOffset: Double = 0,
-    paperStyle: NotePaperStyle = .automatic,
+    paperStyle: NotePaperStyle = .defaultStyle,
     kind: NoteKind = .infinitePages,
     isFavorite: Bool? = nil
   ) {

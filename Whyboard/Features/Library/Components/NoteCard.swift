@@ -1,9 +1,6 @@
 import SwiftUI
 
 struct NoteCard: View {
-  @AppStorage(NotePaperStyle.defaultStorageKey, store: AppPreferences.store)
-  private var defaultPaperStyleRawValue = NotePaperStyle.defaultStyle.rawValue
-
   let note: Note
   let pageCount: Int
   let previewPage: Page?
@@ -14,7 +11,7 @@ struct NoteCard: View {
   let onToggleFavorite: () -> Void
 
   private var paperStyle: NotePaperStyle {
-    note.paperStyle.resolved(defaultRawValue: defaultPaperStyleRawValue)
+    note.paperStyle.resolved(defaultRawValue: NotePaperStyle.defaultStyle.rawValue)
   }
 
   var body: some View {

@@ -129,11 +129,33 @@ struct PersistenceTests {
       .appending(path: noteID.uuidString.lowercased(), directoryHint: .isDirectory)
       .appending(
         path:
-          "\(pageID.uuidString.lowercased())-v\(PagePreviewRenderer.version)-r2.heic")
+          "\(pageID.uuidString.lowercased())-v\(PagePreviewRenderer.version)-r2-white.heic")
     try FileManager.default.removeItem(at: currentPreview)
     await previews.clearMemoryCache()
     #expect(await previews.preview(pageID: pageID, noteID: noteID, revision: 2) == nil)
     #expect(try await repository.load(pageID: pageID, noteID: noteID) == drawing)
+  }
+
+  @Test func previewCacheSeparatesPaperStylesAtTheSameRevision() async throws {
+    let directories = try AppDirectories.makeForTesting()
+    defer { try? FileManager.default.removeItem(at: directories.root) }
+    let repository = DrawingRepository(directories: directories)
+    let noteID = UUID()
+    let page = Page(noteID: noteID, sortOrder: 0, contentRevision: 1)
+    try await repository.save(PKDrawing(), pageID: page.id, noteID: noteID)
+
+    let white = await repository.preview(
+      for: PagePreviewDescriptor(
+        page: page,
+        noteKind: .infinitePages,
+        paperStyle: .white))
+    let black = await repository.preview(
+      for: PagePreviewDescriptor(
+        page: page,
+        noteKind: .infinitePages,
+        paperStyle: .black))
+
+    #expect(white?.pngData() != black?.pngData())
   }
 
   @Test func previewCompositesWorkspaceObjectsWithInk() async throws {

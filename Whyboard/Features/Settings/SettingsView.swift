@@ -24,7 +24,7 @@ struct SettingsView: View {
   var body: some View {
     Form {
       Section {
-        Picker("Default Paper", selection: $defaultPaperStyleRawValue) {
+        Picker("Default Background", selection: $defaultPaperStyleRawValue) {
           ForEach(NotePaperStyle.selectableStyles) { style in
             paperStyleLabel(style)
               .tag(style.rawValue)
@@ -32,9 +32,9 @@ struct SettingsView: View {
         }
         .accessibilityIdentifier("default-paper-picker")
       } header: {
-        Text("Paper")
+        Text("Background")
       } footer: {
-        Text("New and existing notes using “Use Default” follow this colour.")
+        Text("New notes start with this colour. Existing notes keep their own background.")
       }
 
       Section("Writing") {

@@ -22,11 +22,16 @@ struct PDFImportService {
   func importPDF(
     at source: URL,
     folderID: UUID,
+    paperStyle: NotePaperStyle = .defaultStyle,
     existingNotes: [Note],
     context: ModelContext,
     onProgress: (Double) -> Void = { _ in }
   ) async throws -> UUID {
-    let note = makeNote(source: source, folderID: folderID, existingNotes: existingNotes)
+    let note = makeNote(
+      source: source,
+      folderID: folderID,
+      paperStyle: paperStyle,
+      existingNotes: existingNotes)
     do {
       let stored = try await drawingRepository.documents.importPDF(
         at: source,
@@ -57,13 +62,18 @@ struct PDFImportService {
   private func makeNote(
     source: URL,
     folderID: UUID,
+    paperStyle: NotePaperStyle,
     existingNotes: [Note]
   ) -> Note {
     let sourceTitle = source.deletingPathExtension().lastPathComponent
     let baseTitle = sourceTitle.isEmpty ? "Imported PDF" : sourceTitle
     let conflicts = existingNotes.filter { $0.folderID == folderID }.map(\.title)
     let title = uniqueTitle(baseTitle, existingTitles: conflicts)
-    return Note(folderID: folderID, title: title, kind: .infinitePages)
+    return Note(
+      folderID: folderID,
+      title: title,
+      paperStyle: paperStyle,
+      kind: .infinitePages)
   }
 
   private func uniqueTitle(_ title: String, existingTitles: [String]) -> String {

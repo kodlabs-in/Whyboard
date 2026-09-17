@@ -15,6 +15,8 @@ struct LibraryView: View {
   private var noteSortField = NoteSortField.updatedDate
   @AppStorage(NoteSortDirection.storageKey, store: AppPreferences.store)
   private var noteSortDirection = NoteSortDirection.descending
+  @AppStorage(NotePaperStyle.defaultStorageKey, store: AppPreferences.store)
+  var defaultPaperStyleRawValue = NotePaperStyle.defaultStyle.rawValue
 
   @State var controller = LibraryController()
   @State var routes: [LibraryRoute] = []
@@ -44,6 +46,11 @@ struct LibraryView: View {
 
   private var recentNotes: [Note] {
     NoteSorting.recentlyOpened(notes)
+  }
+
+  var defaultPaperStyle: NotePaperStyle {
+    let stored = NotePaperStyle(rawValue: defaultPaperStyleRawValue) ?? .defaultStyle
+    return stored == .automatic ? .defaultStyle : stored
   }
 
   private var coverPages: [UUID: Page] {
@@ -136,6 +143,7 @@ struct LibraryView: View {
       guard !ThermalPolicy.allowsSpeculativeWork else { return }
       clearDisposableCaches()
     }
+    .onAppear(perform: migrateLegacyPaperStyles)
   }
 
   @ViewBuilder
@@ -230,6 +238,7 @@ struct LibraryView: View {
       let noteID = controller.createNote(
         in: location,
         kind: kind,
+        paperStyle: defaultPaperStyle,
         folders: folders,
         context: modelContext)
     else { return }
@@ -269,7 +278,10 @@ struct LibraryView: View {
     controller.save(modelContext)
   }
 
-  private func confirmNoteDeletion(_ note: Note) {
+}
+
+private extension LibraryView {
+  func confirmNoteDeletion(_ note: Note) {
     controller.confirmNoteDeletion(
       note,
       pages: pages,
@@ -277,9 +289,18 @@ struct LibraryView: View {
       context: modelContext,
       drawingRepository: drawingRepository)
   }
-}
 
-private extension LibraryView {
+  func migrateLegacyPaperStyles() {
+    let legacyNotes = notes.filter { note in
+      guard let rawValue = note.paperStyleRawValue else { return true }
+      return NotePaperStyle(rawValue: rawValue) == nil
+        || rawValue == NotePaperStyle.automatic.rawValue
+    }
+    guard !legacyNotes.isEmpty else { return }
+    legacyNotes.forEach { $0.paperStyle = defaultPaperStyle }
+    controller.save(modelContext)
+  }
+
   private func clearDisposableCaches() {
     Task {
       await drawingRepository.previews.clearMemoryCache()

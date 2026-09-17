@@ -8,7 +8,7 @@ enum NotePaperStyle: String, CaseIterable, Identifiable, Sendable {
   case softBlue
 
   static let defaultStorageKey = "defaultNotePaperStyle.v1"
-  static let defaultStyle = NotePaperStyle.white
+  nonisolated static let defaultStyle = NotePaperStyle.white
 
   static var selectableStyles: [NotePaperStyle] {
     allCases.filter { $0 != .automatic }

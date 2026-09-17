@@ -35,6 +35,7 @@ extension LibraryView {
           .importPDF(
             at: source,
             folderID: folderID,
+            paperStyle: defaultPaperStyle,
             existingNotes: notes,
             context: modelContext,
             onProgress: updateDocumentProgress)

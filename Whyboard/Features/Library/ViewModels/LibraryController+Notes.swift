@@ -6,6 +6,7 @@ extension LibraryController {
   func createNote(
     in location: LibraryLocation,
     kind: NoteKind = .infinitePages,
+    paperStyle: NotePaperStyle = .defaultStyle,
     folders: [Folder],
     context: ModelContext
   ) -> UUID? {
@@ -14,7 +15,7 @@ extension LibraryController {
       return nil
     }
 
-    let note = Note(folderID: folderID, kind: kind)
+    let note = Note(folderID: folderID, paperStyle: paperStyle, kind: kind)
     context.insert(note)
     context.insert(Page(noteID: note.id, sortOrder: 0))
     save(context)
