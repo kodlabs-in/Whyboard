@@ -101,7 +101,10 @@ nonisolated enum BackupValidator {
       throw BackupValidationError.invalidReference
     }
     try validatePageDocuments(library.pages, documentsByID: documentsByID)
-    try validateReferencedPayloads(library, paths: Set(payloads.map(\.relativePath)))
+    try validateReferencedPayloads(
+      library,
+      paths: Set(payloads.map { BackupFileUtilities.canonicalPayloadRelativePath($0.relativePath) })
+    )
   }
 
   private static func validatePageDocuments(
@@ -151,6 +154,10 @@ nonisolated enum BackupValidator {
     guard Set(payloads.map(\.relativePath)).count == payloads.count else {
       throw BackupValidationError.duplicatePayload
     }
+    guard
+      Set(payloads.map { BackupFileUtilities.canonicalPayloadRelativePath($0.relativePath) }).count
+        == payloads.count
+    else { throw BackupValidationError.duplicatePayload }
     for payload in payloads {
       try validatePayload(payload, package: package)
     }

@@ -25,6 +25,10 @@ struct BackupRestoreTests {
     #expect(manifest.payloads.contains { $0.relativePath.hasPrefix("attachments/") })
     #expect(!manifest.payloads.contains { $0.relativePath.contains("previews") })
     #expect(manifest.payloads.allSatisfy { $0.sha256.count == 64 })
+    #expect(
+      manifest.payloads.allSatisfy {
+        BackupFileUtilities.canonicalPayloadRelativePath($0.relativePath) == $0.relativePath
+      })
   }
 
   @Test func restoreKeepsBothAndRemapsEveryIdentity() async throws {
@@ -193,7 +197,7 @@ struct BackupRestoreTests {
     #expect(try fixture.context.fetchCount(FetchDescriptor<Page>()) == 1)
   }
 
-  private func makeFixture() async throws -> BackupFixture {
+  func makeFixture() async throws -> BackupFixture {
     let schema = Schema([Folder.self, Note.self, Page.self, ImportedDocument.self])
     let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -234,7 +238,24 @@ struct BackupRestoreTests {
       page: page)
   }
 
-  private func decodeManifest(at package: URL) throws -> WhyboardBackupManifest {
+  func makeFreshInstallation() throws -> FreshInstallationFixture {
+    let schema = Schema([Folder.self, Note.self, Page.self, ImportedDocument.self])
+    let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+    let container = try ModelContainer(for: schema, configurations: [configuration])
+    let context = container.mainContext
+    let directories = try AppDirectories.makeForTesting()
+    let root = Folder(name: "Library", isSystem: true)
+    context.insert(root)
+    try context.save()
+    return FreshInstallationFixture(
+      container: container,
+      context: context,
+      directories: directories,
+      repository: DrawingRepository(directories: directories),
+      rootFolder: root)
+  }
+
+  func decodeManifest(at package: URL) throws -> WhyboardBackupManifest {
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
     return try decoder.decode(
@@ -242,7 +263,7 @@ struct BackupRestoreTests {
       from: Data(contentsOf: package.appending(path: "manifest.json")))
   }
 
-  private func writeManifest(_ manifest: WhyboardBackupManifest, at package: URL) throws {
+  func writeManifest(_ manifest: WhyboardBackupManifest, at package: URL) throws {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     try encoder.encode(manifest).write(
@@ -251,8 +272,63 @@ struct BackupRestoreTests {
   }
 }
 
+extension BackupRestoreTests {
+  @Test func externalBackupRestoresIntoFreshInstallation() async throws {
+    let source = try await makeFixture()
+    let externalRoot = FileManager.default.temporaryDirectory
+      .appending(path: "WhyboardExternalBackup-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer {
+      try? FileManager.default.removeItem(at: source.directories.root)
+      try? FileManager.default.removeItem(at: externalRoot)
+    }
+    try FileManager.default.createDirectory(at: externalRoot, withIntermediateDirectories: true)
+    let backup = try await BackupService(drawingRepository: source.repository)
+      .createBackup(
+        folders: source.folders,
+        notes: [source.note],
+        pages: [source.page],
+        importedDocuments: [])
+    // Backups made by the affected release can appear in Files as ordinary,
+    // extensionless folders instead of registered document packages.
+    let externalBackup = externalRoot.appending(
+      path: "Whyboard 2026 Legacy Backup",
+      directoryHint: .isDirectory)
+    try FileManager.default.copyItem(at: backup.url, to: externalBackup)
+
+    // Model uninstall/reinstall: the original app container is gone and the
+    // restore destination has a brand-new SwiftData store and Library root.
+    try FileManager.default.removeItem(at: source.directories.root)
+    let fresh = try makeFreshInstallation()
+    defer { try? FileManager.default.removeItem(at: fresh.directories.root) }
+
+    let result = try await RestoreService(drawingRepository: fresh.repository)
+      .restore(
+        from: externalBackup,
+        existingFolders: [fresh.rootFolder],
+        context: fresh.context)
+    let notes = try fresh.context.fetch(FetchDescriptor<Note>())
+    let pages = try fresh.context.fetch(FetchDescriptor<Page>())
+    let restoredNote = try #require(notes.first)
+    let restoredPage = try #require(pages.first)
+    let filename = try #require(
+      WorkspaceElementCoding.decode(restoredPage.workspaceElementsData).first?.assetFilename)
+
+    #expect(result.notes == 1)
+    #expect(result.pages == 1)
+    #expect(restoredNote.title == "Architecture")
+    #expect(
+      FileManager.default.fileExists(
+        atPath: fresh.repository.attachments.fileURL(
+          noteID: restoredNote.id,
+          pageID: restoredPage.id,
+          filename: filename
+        ).path))
+    _ = try await fresh.repository.load(pageID: restoredPage.id, noteID: restoredNote.id)
+  }
+}
+
 @MainActor
-private struct BackupFixture {
+struct BackupFixture {
   // A ModelContext does not retain its container. Keep the container alive for
   // the complete test so SwiftData cannot invalidate the fixture's models.
   let container: ModelContainer
@@ -262,4 +338,13 @@ private struct BackupFixture {
   let folders: [Folder]
   let note: Note
   let page: Page
+}
+
+@MainActor
+struct FreshInstallationFixture {
+  let container: ModelContainer
+  let context: ModelContext
+  let directories: AppDirectories
+  let repository: DrawingRepository
+  let rootFolder: Folder
 }

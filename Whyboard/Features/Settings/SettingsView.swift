@@ -16,8 +16,10 @@ struct SettingsView: View {
   @State private var operation: DocumentOperationPresentation?
   @State private var operationTask: Task<Void, Never>?
   @State private var backupResult: BackupExportResult?
+  @State private var isExportingBackup = false
   @State private var isPickingBackup = false
   @State private var completionMessage: String?
+  @State private var pendingCompletionMessage: String?
 
   let drawingRepository: DrawingRepository
 
@@ -67,7 +69,10 @@ struct SettingsView: View {
       } header: {
         Text("Backup & Restore")
       } footer: {
-        Text("Backups are checksum-verified and stay local unless you choose to share them.")
+        Text(
+          "Save backups in iCloud Drive or another folder outside Whyboard. "
+            + "Whyboard data stored inside the app is removed when you uninstall it. "
+            + "For an older folder-style backup, select its Whyboard 2026… folder.")
       }
 
       Section("Privacy") {
@@ -79,15 +84,19 @@ struct SettingsView: View {
     }
     .navigationTitle("Settings")
     .navigationBarTitleDisplayMode(.inline)
-    .sheet(item: $operation) { value in
+    .sheet(item: $operation, onDismiss: presentPendingCompletion) { value in
       DocumentProgressSheet(operation: value, onCancel: cancelOperation)
     }
-    .sheet(item: $backupResult, onDismiss: removeTemporaryBackup) { result in
-      PDFShareSheet(url: result.url)
-    }
+    .fileExporter(
+      isPresented: $isExportingBackup,
+      document: backupDocument,
+      contentType: .whyboardBackup,
+      defaultFilename: backupFilename,
+      onCompletion: handleBackupExport
+    )
     .fileImporter(
       isPresented: $isPickingBackup,
-      allowedContentTypes: [.item],
+      allowedContentTypes: [.whyboardBackup, .folder],
       allowsMultipleSelection: false,
       onCompletion: handleBackupSelection
     )
@@ -125,6 +134,14 @@ struct SettingsView: View {
       get: { completionMessage != nil },
       set: { if !$0 { completionMessage = nil } })
   }
+
+  private var backupDocument: WhyboardBackupDocument? {
+    backupResult.map { WhyboardBackupDocument(packageURL: $0.url) }
+  }
+
+  private var backupFilename: String {
+    backupResult?.url.deletingPathExtension().lastPathComponent ?? "Whyboard Backup"
+  }
 }
 
 private extension SettingsView {
@@ -142,11 +159,23 @@ private extension SettingsView {
             onProgress: updateProgress)
         finishOperation(announcement: "Backup complete")
         backupResult = result
+        isExportingBackup = true
       } catch BackupCreationError.cancelled {
         finishOperation(announcement: "Backup cancelled")
       } catch {
         finishOperation(error: error)
       }
+    }
+  }
+
+  func handleBackupExport(_ result: Result<URL, Error>) {
+    defer { removeTemporaryBackup() }
+    switch result {
+    case .success:
+      completionMessage =
+        "Backup saved. Keep it outside Whyboard's app storage so it survives uninstalling the app."
+    case .failure(let error):
+      completionMessage = error.localizedDescription
     }
   }
 
@@ -171,10 +200,11 @@ private extension SettingsView {
             existingFolders: folders,
             context: modelContext,
             onProgress: updateProgress)
-        finishOperation(announcement: "Restore complete")
-        completionMessage =
-          "Restored \(result.folders) folders, \(result.notes) notes, "
-          + "and \(result.pages) pages as independent copies."
+        finishOperation(
+          announcement: "Restore complete",
+          completion:
+            "Restored \(result.folders) folders, \(result.notes) notes, "
+            + "and \(result.pages) pages as independent copies.")
       } catch RestoreError.cancelled {
         finishOperation(announcement: "Restore cancelled")
       } catch {
@@ -193,20 +223,28 @@ private extension SettingsView {
     operationTask?.cancel()
   }
 
-  func finishOperation(announcement: String) {
+  func finishOperation(announcement: String, completion: String? = nil) {
     operationTask = nil
+    pendingCompletionMessage = completion
     operation = nil
     UIAccessibility.post(notification: .announcement, argument: announcement)
   }
 
   func finishOperation(error: Error) {
     operationTask = nil
+    pendingCompletionMessage = error.localizedDescription
     operation = nil
-    completionMessage = error.localizedDescription
+  }
+
+  func presentPendingCompletion() {
+    guard let pendingCompletionMessage else { return }
+    self.pendingCompletionMessage = nil
+    completionMessage = pendingCompletionMessage
   }
 
   func removeTemporaryBackup() {
     guard let url = backupResult?.url else { return }
     try? FileManager.default.removeItem(at: url)
+    backupResult = nil
   }
 }

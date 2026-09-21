@@ -65,7 +65,7 @@ private actor RestorePackageWorker {
       try Task.checkCancellation()
       let source = package.appending(path: "Payload").appending(path: payload.relativePath)
       let destination = try destinationURL(
-        for: payload.relativePath,
+        for: BackupFileUtilities.canonicalPayloadRelativePath(payload.relativePath),
         identityMap: identityMap)
       try BackupFileUtilities.copyFile(from: source, to: destination)
       progress.yield(Double(index + 1) / Double(max(payloads.count + 1, 1)))
