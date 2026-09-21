@@ -100,30 +100,30 @@ private struct WorkspaceElementVisual: View {
   }
 }
 
-private struct WorkspaceShapeView: View {
+nonisolated enum WorkspaceShapePath {
   static let openShapes: Set<WorkspaceShapeKind> = [.line, .arrow]
-  static let pathBuilders: [WorkspaceShapeKind: (CGRect) -> Path] = [
-    .rectangle: { rect in
-      Path(roundedRect: rect.insetBy(dx: 5, dy: 5), cornerRadius: 18)
-    },
-    .ellipse: { rect in
-      Path(ellipseIn: rect.insetBy(dx: 5, dy: 5))
-    },
-    .triangle: { rect in
+
+  static func path(for kind: WorkspaceShapeKind, in rect: CGRect) -> Path {
+    switch kind {
+    case .rectangle:
+      return Path(roundedRect: rect.insetBy(dx: 5, dy: 5), cornerRadius: 18)
+    case .circle:
+      return Path(ellipseIn: centeredSquare(in: rect).insetBy(dx: 5, dy: 5))
+    case .ellipse:
+      return Path(ellipseIn: rect.insetBy(dx: 5, dy: 5))
+    case .triangle:
       var path = Path()
       path.move(to: CGPoint(x: rect.midX, y: rect.minY + 5))
       path.addLine(to: CGPoint(x: rect.maxX - 5, y: rect.maxY - 5))
       path.addLine(to: CGPoint(x: rect.minX + 5, y: rect.maxY - 5))
       path.closeSubpath()
       return path
-    },
-    .line: { rect in
+    case .line:
       var path = Path()
       path.move(to: CGPoint(x: rect.minX + 8, y: rect.maxY - 8))
       path.addLine(to: CGPoint(x: rect.maxX - 8, y: rect.minY + 8))
       return path
-    },
-    .arrow: { rect in
+    case .arrow:
       var path = Path()
       let start = CGPoint(x: rect.minX + 8, y: rect.midY)
       let end = CGPoint(x: rect.maxX - 8, y: rect.midY)
@@ -133,16 +133,34 @@ private struct WorkspaceShapeView: View {
       path.addLine(to: end)
       path.addLine(to: CGPoint(x: end.x - 28, y: end.y + 22))
       return path
-    },
-  ]
+    }
+  }
+
+  static func hitPath(for kind: WorkspaceShapeKind, in rect: CGRect) -> Path {
+    let path = path(for: kind, in: rect)
+    guard openShapes.contains(kind) else { return path }
+    return path.strokedPath(StrokeStyle(lineWidth: 44, lineCap: .round, lineJoin: .round))
+  }
+
+  private static func centeredSquare(in rect: CGRect) -> CGRect {
+    let side = min(rect.width, rect.height)
+    return CGRect(
+      x: rect.midX - side / 2,
+      y: rect.midY - side / 2,
+      width: side,
+      height: side)
+  }
+}
+
+private struct WorkspaceShapeView: View {
 
   let kind: WorkspaceShapeKind
   let color: Color
 
   var body: some View {
     GeometryReader { geometry in
-      let path = Self.pathBuilders[kind]?(geometry.frame(in: .local)) ?? Path()
-      if Self.openShapes.contains(kind) {
+      let path = WorkspaceShapePath.path(for: kind, in: geometry.frame(in: .local))
+      if WorkspaceShapePath.openShapes.contains(kind) {
         path.stroke(color, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
       } else {
         path

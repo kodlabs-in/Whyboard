@@ -46,7 +46,11 @@ private struct WorkspaceElementInteractionView: View {
 
   var body: some View {
     Color.clear
-      .contentShape(Rectangle())
+      .contentShape(
+        WorkspaceElementHitShape(
+          elementKind: element.kind,
+          shapeKind: element.shapeKind)
+      )
       .frame(width: screenFrame.width, height: screenFrame.height)
       .overlay { selectionBorder }
       .overlay(alignment: .bottomTrailing) { resizeHandle }
@@ -161,9 +165,19 @@ private struct WorkspaceElementInteractionView: View {
     from frame: WorkspaceElementFrame,
     translation: CGSize
   ) -> WorkspaceElementFrame {
-    if element.kind == .image {
+    if element.kind == .image || element.shapeKind?.preservesAspectRatio == true {
       return frame.resizedPreservingAspectRatio(by: translation, scale: transform.scale)
     }
     return frame.resized(by: translation, scale: transform.scale)
+  }
+}
+
+nonisolated struct WorkspaceElementHitShape: Shape {
+  let elementKind: WorkspaceElementKind
+  let shapeKind: WorkspaceShapeKind?
+
+  nonisolated func path(in rect: CGRect) -> Path {
+    guard elementKind == .shape else { return Path(rect) }
+    return WorkspaceShapePath.hitPath(for: shapeKind ?? .rectangle, in: rect)
   }
 }

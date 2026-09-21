@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 
@@ -69,6 +70,162 @@ struct WorkspaceElementTests {
     #expect(resized.height > frame.height)
   }
 
+  @Test func circleStartsAndResizesWithEqualDimensions() throws {
+    let note = Note(folderID: UUID())
+    let page = Page(noteID: note.id, sortOrder: 0)
+    let session = ElementSession(
+      page: page,
+      note: note,
+      canvasSize: CanonicalPage.size,
+      saveMetadata: {},
+      onError: { _ in })
+
+    let circleID = session.addShape(.circle, at: CGPoint(x: 320, y: 480))
+    let circle = try #require(session.element(withID: circleID))
+    let resized = circle.frame.resizedPreservingAspectRatio(
+      by: CGSize(width: 90, height: 20),
+      scale: 1)
+
+    #expect(circle.frame.width == circle.frame.height)
+    #expect(resized.width == resized.height)
+    #expect(WorkspaceElementCoding.decode(page.workspaceElementsData).first?.shapeKind == .circle)
+  }
+
+  @Test func overlappingShapesPersistIndependently() {
+    let note = Note(folderID: UUID())
+    let page = Page(noteID: note.id, sortOrder: 0)
+    let session = ElementSession(
+      page: page,
+      note: note,
+      canvasSize: CanonicalPage.size,
+      saveMetadata: {},
+      onError: { _ in })
+    let center = CGPoint(x: 320, y: 480)
+
+    let circleID = session.addShape(.circle, at: center)
+    let lineID = session.addShape(.line, at: center)
+    let decoded = WorkspaceElementCoding.decode(page.workspaceElementsData)
+
+    #expect(decoded.map(\.id) == [circleID, lineID])
+    #expect(decoded.allSatisfy { $0.frame.center == center })
+  }
+
+  @Test func invalidTransformDoesNotPoisonLaterSaves() throws {
+    let note = Note(folderID: UUID())
+    let page = Page(noteID: note.id, sortOrder: 0)
+    var errors: [String] = []
+    var saveCount = 0
+    let session = ElementSession(
+      page: page,
+      note: note,
+      canvasSize: CanonicalPage.size,
+      saveMetadata: { saveCount += 1 },
+      onError: { errors.append($0) })
+    let lineID = session.addShape(.line, at: CGPoint(x: 320, y: 480))
+    let original = try #require(session.element(withID: lineID)?.frame)
+    let originalData = page.workspaceElementsData
+    var invalid = original
+    invalid.rotationDegrees = .nan
+
+    session.commitFrame(invalid, for: lineID)
+
+    #expect(session.element(withID: lineID)?.frame == original)
+    #expect(page.workspaceElementsData == originalData)
+    #expect(page.contentRevision == 1)
+    #expect(saveCount == 1)
+    #expect(errors.count == 1)
+
+    session.commitFrame(original.rotated(by: 90), for: lineID)
+
+    #expect(session.element(withID: lineID)?.frame.rotationDegrees == 90)
+    #expect(WorkspaceElementCoding.decode(page.workspaceElementsData).count == 1)
+    #expect(page.contentRevision == 2)
+    #expect(saveCount == 2)
+  }
+
+  @Test func metadataFailureRestoresInMemoryAndPersistedGeometry() throws {
+    let note = Note(folderID: UUID())
+    let page = Page(noteID: note.id, sortOrder: 0)
+    var failsSave = false
+    var errors: [String] = []
+    let session = ElementSession(
+      page: page,
+      note: note,
+      canvasSize: CanonicalPage.size,
+      saveMetadata: {
+        if failsSave { throw WorkspaceElementTestError.saveFailed }
+      },
+      onError: { errors.append($0) })
+    let shapeID = session.addShape(.rectangle, at: CGPoint(x: 300, y: 400))
+    let original = try #require(session.element(withID: shapeID)?.frame)
+    let originalData = page.workspaceElementsData
+    let preview = original.translated(by: CGSize(width: 40, height: 20), scale: 1)
+    session.previewFrame(preview, for: shapeID)
+    #expect(session.element(withID: shapeID)?.frame == preview)
+    failsSave = true
+
+    session.commitFrame(
+      original.translated(by: CGSize(width: 80, height: 40), scale: 1),
+      for: shapeID)
+
+    #expect(session.element(withID: shapeID)?.frame == original)
+    #expect(page.workspaceElementsData == originalData)
+    #expect(page.contentRevision == 1)
+    #expect(errors == [WorkspaceElementTestError.saveFailed.localizedDescription])
+  }
+
+  @Test func deletingOneOverlappingShapePreservesItsSibling() {
+    let note = Note(folderID: UUID())
+    let page = Page(noteID: note.id, sortOrder: 0)
+    let session = ElementSession(
+      page: page,
+      note: note,
+      canvasSize: CanonicalPage.size,
+      saveMetadata: {},
+      onError: { _ in })
+    let center = CGPoint(x: 320, y: 480)
+    let circleID = session.addShape(.circle, at: center)
+    let lineID = session.addShape(.line, at: center)
+    session.select(circleID)
+
+    _ = session.deleteSelected()
+
+    #expect(session.elements.map(\.id) == [lineID])
+    #expect(WorkspaceElementCoding.decode(page.workspaceElementsData).map(\.id) == [lineID])
+  }
+
+  @Test func openShapeHitRegionFollowsTheVisibleStroke() {
+    let rect = CGRect(x: 0, y: 0, width: 240, height: 180)
+    let line = WorkspaceElementHitShape(elementKind: .shape, shapeKind: .line).path(in: rect)
+    let circle = WorkspaceElementHitShape(elementKind: .shape, shapeKind: .circle).path(in: rect)
+
+    #expect(line.contains(CGPoint(x: rect.midX, y: rect.midY)))
+    #expect(!line.contains(CGPoint(x: 12, y: 12)))
+    #expect(circle.contains(CGPoint(x: rect.midX, y: rect.midY)))
+    #expect(!circle.contains(CGPoint(x: 12, y: 12)))
+  }
+
+  @Test func invalidInteractionScaleLeavesFrameUnchanged() {
+    let frame = WorkspaceElementFrame(
+      center: CGPoint(x: 400, y: 500),
+      size: CGSize(width: 200, height: 160))
+
+    #expect(frame.translated(by: CGSize(width: 20, height: 30), scale: 0) == frame)
+    #expect(frame.resized(by: CGSize(width: 20, height: 30), scale: .nan) == frame)
+  }
+
+  @Test func manifestEncodingRejectsNonFiniteGeometry() {
+    var frame = WorkspaceElementFrame(
+      center: CGPoint(x: 400, y: 500),
+      size: CGSize(width: 200, height: 160))
+    frame.centerX = .infinity
+    let element = WorkspaceElement(kind: .shape, frame: frame, zIndex: 0, shapeKind: .line)
+
+    #expect(throws: WorkspaceElementCodingError.invalidGeometry(element.id)) {
+      try WorkspaceElementCoding.encode([element])
+    }
+  }
+
   @Test func legacyUnsupportedMediaDoesNotHideSupportedObjects() throws {
     let supported = WorkspaceElement(
       kind: .shape,
@@ -129,4 +286,10 @@ struct WorkspaceElementTests {
     #expect(max(decoded.size.width, decoded.size.height) <= 256)
     #expect(abs(decoded.size.width / decoded.size.height - 4.0 / 3.0) < 0.001)
   }
+}
+
+private enum WorkspaceElementTestError: LocalizedError {
+  case saveFailed
+
+  var errorDescription: String? { "Test metadata save failed." }
 }

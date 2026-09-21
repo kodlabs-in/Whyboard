@@ -166,6 +166,28 @@ final class WhyboardUITests: XCTestCase {
   }
 
   @MainActor
+  func testAddsAndDirectlyDeletesACircle() throws {
+    let app = try XCTUnwrap(app)
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infiniteCanvas", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+
+    app.buttons["Insert"].tap()
+    app.buttons["Shape"].tap()
+    app.buttons["Circle"].tap()
+
+    let circle = app.otherElements["Circle"].firstMatch
+    XCTAssertTrue(circle.waitForExistence(timeout: 3))
+    XCTAssertEqual(circle.frame.width, circle.frame.height, accuracy: 1)
+
+    let delete = app.buttons["workspace-delete-object"]
+    XCTAssertTrue(delete.waitForExistence(timeout: 3))
+    delete.tap()
+
+    XCTAssertFalse(circle.waitForExistence(timeout: 1))
+  }
+
+  @MainActor
   func testCreatesAndSelectsAFolder() throws {
     let app = try XCTUnwrap(app)
     let newFolderButton = app.buttons["New Folder"].firstMatch

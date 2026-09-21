@@ -56,7 +56,7 @@ final class ElementSession {
     append(
       WorkspaceElement(
         kind: .shape,
-        frame: defaultFrame(centeredAt: point, size: CGSize(width: 240, height: 180)),
+        frame: defaultFrame(centeredAt: point, size: shape.defaultSize),
         zIndex: nextZIndex,
         shapeKind: shape))
   }
@@ -102,6 +102,7 @@ final class ElementSession {
     guard elements[index].kind == .image else { return }
     guard abs((elements[index].aspectRatio ?? 0) - aspectRatio) > 0.001 else { return }
 
+    let previousSelection = selectedElementID
     let size = WorkspaceElementFrame.aspectFittedSize(
       aspectRatio: aspectRatio,
       inside: CGSize(width: 360, height: 320))
@@ -109,7 +110,7 @@ final class ElementSession {
     elements[index].frame.width = size.width
     elements[index].frame.height = size.height
     elements[index].frame = elements[index].frame.clamped(to: canvasSize)
-    persist()
+    persist(restoringSelection: previousSelection)
   }
 
   func duplicateSelected() {
@@ -141,9 +142,10 @@ final class ElementSession {
 
   func deleteSelected() -> String? {
     guard let selectedElement else { return nil }
+    let previousSelection = selectedElementID
     elements.removeAll { $0.id == selectedElement.id }
     selectedElementID = nil
-    persist()
+    guard persist(restoringSelection: previousSelection) else { return nil }
 
     guard let filename = selectedElement.assetFilename else { return nil }
     let isStillReferenced = elements.contains { $0.assetFilename == filename }
@@ -156,7 +158,7 @@ final class ElementSession {
   }
 
   func retrySave() {
-    persist()
+    persist(restoringSelection: selectedElementID)
   }
 
   private var nextZIndex: Int {
@@ -165,9 +167,10 @@ final class ElementSession {
 
   @discardableResult
   private func append(_ element: WorkspaceElement) -> UUID {
+    let previousSelection = selectedElementID
     elements.append(element)
     selectedElementID = element.id
-    persist()
+    persist(restoringSelection: previousSelection)
     return element.id
   }
 
@@ -177,23 +180,41 @@ final class ElementSession {
     savesChanges: Bool
   ) {
     guard let index = elements.firstIndex(where: { $0.id == elementID }) else { return }
-    elements[index].frame = frame.clamped(to: canvasSize)
+    guard let normalizedFrame = frame.normalizedForPersistence() else {
+      if savesChanges {
+        onError(
+          WorkspaceElementCodingError.invalidGeometry(elementID).localizedDescription)
+      }
+      return
+    }
+    let previousSelection = selectedElementID
+    let clampedFrame = normalizedFrame.clamped(to: canvasSize)
+    guard clampedFrame.isValid else {
+      if savesChanges {
+        onError(
+          WorkspaceElementCodingError.invalidGeometry(elementID).localizedDescription)
+      }
+      return
+    }
+    elements[index].frame = clampedFrame
     if savesChanges {
-      persist()
+      persist(restoringSelection: previousSelection)
     }
   }
 
   private func updateSelected(_ update: (inout WorkspaceElement) -> Void) {
     guard let index = elements.firstIndex(where: { $0.id == selectedElementID }) else { return }
+    let previousSelection = selectedElementID
     update(&elements[index])
-    persist()
+    persist(restoringSelection: previousSelection)
   }
 
   private func defaultFrame(centeredAt point: CGPoint, size: CGSize) -> WorkspaceElementFrame {
     WorkspaceElementFrame(center: point, size: size).clamped(to: canvasSize)
   }
 
-  private func persist() {
+  @discardableResult
+  private func persist(restoringSelection previousSelection: UUID?) -> Bool {
     let previousData = page.workspaceElementsData
     let previousRevision = page.contentRevision
     let previousPageUpdate = page.updatedAt
@@ -207,12 +228,16 @@ final class ElementSession {
       note.updatedAt = now
       try saveMetadata()
       onPreviewInvalidated(elements, page.contentRevision)
+      return true
     } catch {
+      elements = WorkspaceElementCoding.decode(previousData)
+      selectedElementID = elements.contains { $0.id == previousSelection } ? previousSelection : nil
       page.workspaceElementsData = previousData
       page.contentRevision = previousRevision
       page.updatedAt = previousPageUpdate
       note.updatedAt = previousNoteUpdate
       onError(error.localizedDescription)
+      return false
     }
   }
 }

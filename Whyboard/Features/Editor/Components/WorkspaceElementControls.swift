@@ -27,6 +27,13 @@ struct WorkspaceObjectToolbar: View {
         onBringToFront: controller.bringSelectedToFront,
         onSendToBack: controller.sendSelectedToBack,
         onDelete: controller.deleteSelected)
+
+      if controller.selectedElement != nil {
+        Button("Delete Object", systemImage: "trash", action: controller.deleteSelected)
+          .tint(.red)
+          .keyboardShortcut(.delete, modifiers: [])
+          .accessibilityIdentifier("workspace-delete-object")
+      }
     }
   }
 }

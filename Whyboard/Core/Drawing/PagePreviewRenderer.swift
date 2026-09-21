@@ -152,6 +152,12 @@ nonisolated struct PagePreviewRenderer: Sendable {
   ]
   private static let shapePaths: [WorkspaceShapeKind: @Sendable (CGRect) -> UIBezierPath] = [
     .rectangle: { UIBezierPath(roundedRect: $0.insetBy(dx: 5, dy: 5), cornerRadius: 18) },
+    .circle: { rect in
+      let side = min(rect.width, rect.height)
+      let horizontalInset = (rect.width - side) / 2 + 5
+      let verticalInset = (rect.height - side) / 2 + 5
+      return UIBezierPath(ovalIn: rect.insetBy(dx: horizontalInset, dy: verticalInset))
+    },
     .ellipse: { UIBezierPath(ovalIn: $0.insetBy(dx: 5, dy: 5)) },
     .triangle: { rect in
       let path = UIBezierPath()
@@ -389,5 +395,4 @@ nonisolated struct PagePreviewRenderer: Sendable {
   private static func color(for color: WorkspaceElementColor) -> UIColor {
     colors[color, default: .systemIndigo]
   }
-
 }

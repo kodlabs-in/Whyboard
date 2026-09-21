@@ -9,6 +9,7 @@ nonisolated enum WorkspaceElementKind: String, Codable, CaseIterable, Sendable {
 
 nonisolated enum WorkspaceShapeKind: String, Codable, CaseIterable, Identifiable, Sendable {
   case rectangle
+  case circle
   case ellipse
   case triangle
   case line
@@ -18,6 +19,7 @@ nonisolated enum WorkspaceShapeKind: String, Codable, CaseIterable, Identifiable
 
   private static let systemImages: [WorkspaceShapeKind: String] = [
     .rectangle: "rectangle",
+    .circle: "circle",
     .ellipse: "circle",
     .triangle: "triangle",
     .line: "line.diagonal",
@@ -28,6 +30,19 @@ nonisolated enum WorkspaceShapeKind: String, Codable, CaseIterable, Identifiable
 
   var systemImage: String {
     Self.systemImages[self, default: "rectangle"]
+  }
+
+  var defaultSize: CGSize {
+    switch self {
+    case .circle:
+      CGSize(width: 200, height: 200)
+    case .rectangle, .ellipse, .triangle, .line, .arrow:
+      CGSize(width: 240, height: 180)
+    }
+  }
+
+  var preservesAspectRatio: Bool {
+    self == .circle
   }
 }
 
@@ -75,6 +90,12 @@ nonisolated struct WorkspaceElementFrame: Codable, Equatable, Sendable {
   }
 
   func translated(by translation: CGSize, scale: CGFloat) -> WorkspaceElementFrame {
+    guard
+      translation.width.isFinite,
+      translation.height.isFinite,
+      scale.isFinite,
+      scale > 0
+    else { return self }
     var frame = self
     frame.centerX += Double(translation.width / scale)
     frame.centerY += Double(translation.height / scale)
@@ -82,6 +103,12 @@ nonisolated struct WorkspaceElementFrame: Codable, Equatable, Sendable {
   }
 
   func resized(by translation: CGSize, scale: CGFloat) -> WorkspaceElementFrame {
+    guard
+      translation.width.isFinite,
+      translation.height.isFinite,
+      scale.isFinite,
+      scale > 0
+    else { return self }
     var frame = self
     frame.width = max(80, width + Double(translation.width / scale))
     frame.height = max(60, height + Double(translation.height / scale))
@@ -92,6 +119,14 @@ nonisolated struct WorkspaceElementFrame: Codable, Equatable, Sendable {
     by translation: CGSize,
     scale: CGFloat
   ) -> WorkspaceElementFrame {
+    guard
+      translation.width.isFinite,
+      translation.height.isFinite,
+      scale.isFinite,
+      scale > 0,
+      width.isFinite,
+      height.isFinite
+    else { return self }
     let horizontalChange = Double(translation.width / scale)
     let verticalChange = Double(translation.height / scale)
     let squaredLength = width * width + height * height
@@ -120,8 +155,29 @@ nonisolated struct WorkspaceElementFrame: Codable, Equatable, Sendable {
   }
 
   func rotated(by degrees: Double) -> WorkspaceElementFrame {
+    guard degrees.isFinite else { return self }
     var frame = self
     frame.rotationDegrees = rotationDegrees + degrees
+    return frame
+  }
+
+  nonisolated var isValid: Bool {
+    centerX.isFinite
+      && centerY.isFinite
+      && width.isFinite
+      && height.isFinite
+      && rotationDegrees.isFinite
+      && width > 0
+      && height > 0
+  }
+
+  func normalizedForPersistence() -> WorkspaceElementFrame? {
+    guard isValid else { return nil }
+    var frame = self
+    frame.rotationDegrees = rotationDegrees.truncatingRemainder(dividingBy: 360)
+    if frame.rotationDegrees < 0 {
+      frame.rotationDegrees += 360
+    }
     return frame
   }
 
@@ -183,6 +239,23 @@ nonisolated struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable 
     guard let text, !text.isEmpty else { return "Double tap to add text" }
     return text
   }
+
+  nonisolated var isValidForPersistence: Bool {
+    guard frame.isValid else { return false }
+    guard let aspectRatio else { return true }
+    return aspectRatio.isFinite && aspectRatio > 0
+  }
+}
+
+nonisolated enum WorkspaceElementCodingError: LocalizedError, Equatable {
+  case invalidGeometry(UUID)
+
+  var errorDescription: String? {
+    switch self {
+    case .invalidGeometry:
+      "Whyboard restored the previous object position because the new geometry was invalid."
+    }
+  }
 }
 
 nonisolated enum WorkspaceElementCoding {
@@ -194,6 +267,9 @@ nonisolated enum WorkspaceElementCoding {
 
   static func encode(_ elements: [WorkspaceElement]) throws -> Data? {
     guard !elements.isEmpty else { return nil }
+    if let invalidElement = elements.first(where: { !$0.isValidForPersistence }) {
+      throw WorkspaceElementCodingError.invalidGeometry(invalidElement.id)
+    }
     return try JSONEncoder().encode(elements)
   }
 }
@@ -202,7 +278,11 @@ private nonisolated struct LossyWorkspaceElement: Decodable {
   let value: WorkspaceElement?
 
   init(from decoder: Decoder) throws {
-    value = try? WorkspaceElement(from: decoder)
+    guard let decoded = try? WorkspaceElement(from: decoder), decoded.isValidForPersistence else {
+      value = nil
+      return
+    }
+    value = decoded
   }
 }
 
