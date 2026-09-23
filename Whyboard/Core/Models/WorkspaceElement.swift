@@ -48,6 +48,7 @@ nonisolated enum WorkspaceShapeKind: String, Codable, CaseIterable, Identifiable
 
 nonisolated enum WorkspaceElementColor: String, Codable, CaseIterable, Identifiable, Sendable {
   case graphite
+  case white
   case indigo
   case blue
   case teal
@@ -60,6 +61,26 @@ nonisolated enum WorkspaceElementColor: String, Codable, CaseIterable, Identifia
 
   var id: String { rawValue }
   var name: String { rawValue.capitalized }
+}
+
+nonisolated struct WorkspaceTextColor: Codable, Equatable, Sendable {
+  var red: Double
+  var green: Double
+  var blue: Double
+  var opacity: Double
+
+  static let white = WorkspaceTextColor(red: 1, green: 1, blue: 1, opacity: 1)
+
+  init(red: Double, green: Double, blue: Double, opacity: Double = 1) {
+    self.red = red
+    self.green = green
+    self.blue = blue
+    self.opacity = opacity
+  }
+
+  var isValid: Bool {
+    [red, green, blue, opacity].allSatisfy { $0.isFinite && (0...1).contains($0) }
+  }
 }
 
 nonisolated struct WorkspaceElementFrame: Codable, Equatable, Sendable {
@@ -199,6 +220,8 @@ nonisolated struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable 
   var text: String?
   var shapeKind: WorkspaceShapeKind?
   var color: WorkspaceElementColor
+  var fontSize: Double?
+  var textColor: WorkspaceTextColor?
   var assetFilename: String?
   var displayName: String?
   var aspectRatio: Double?
@@ -211,6 +234,8 @@ nonisolated struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable 
     text: String? = nil,
     shapeKind: WorkspaceShapeKind? = nil,
     color: WorkspaceElementColor = .indigo,
+    fontSize: Double? = nil,
+    textColor: WorkspaceTextColor? = nil,
     assetFilename: String? = nil,
     displayName: String? = nil,
     aspectRatio: Double? = nil
@@ -222,6 +247,8 @@ nonisolated struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable 
     self.text = text
     self.shapeKind = shapeKind
     self.color = color
+    self.fontSize = fontSize
+    self.textColor = textColor
     self.assetFilename = assetFilename
     self.displayName = displayName
     self.aspectRatio = aspectRatio
@@ -240,8 +267,12 @@ nonisolated struct WorkspaceElement: Codable, Equatable, Identifiable, Sendable 
     return text
   }
 
+  nonisolated var resolvedFontSize: Double { fontSize ?? 28 }
+
   nonisolated var isValidForPersistence: Bool {
     guard frame.isValid else { return false }
+    if let fontSize, !fontSize.isFinite || !(8...144).contains(fontSize) { return false }
+    if let textColor, !textColor.isValid { return false }
     guard let aspectRatio else { return true }
     return aspectRatio.isFinite && aspectRatio > 0
   }

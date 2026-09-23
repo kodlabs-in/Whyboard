@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import Observation
+import SwiftUI
 
 struct ElementEditingTarget {
   let pageID: UUID
@@ -87,9 +88,11 @@ final class WorkspaceElementEditingController {
     guard let target = activeTarget, let element = target.session.selectedElement else { return }
     textEditorRequest = TextElementEditorRequest(
       id: element.id,
-      initialText: element.text ?? ""
-    ) { [weak session = target.session] text in
-      session?.updateSelectedText(text)
+      initialText: element.text ?? "",
+      initialFontSize: element.resolvedFontSize,
+      initialColor: element.textColor?.swiftUIColor ?? element.color.swiftUIColor
+    ) { [weak session = target.session] text, fontSize, color in
+      session?.updateSelectedText(text, fontSize: fontSize, color: color)
     }
   }
 

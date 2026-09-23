@@ -140,6 +140,7 @@ nonisolated struct PagePreviewRenderer: Sendable {
   private static let openShapes: Set<WorkspaceShapeKind> = [.line, .arrow]
   private static let colors: [WorkspaceElementColor: UIColor] = [
     .graphite: UIColor(red: 0.18, green: 0.19, blue: 0.22, alpha: 1),
+    .white: .white,
     .indigo: UIColor(red: 0.31, green: 0.36, blue: 0.91, alpha: 1),
     .blue: .systemBlue,
     .teal: .systemTeal,
@@ -324,9 +325,13 @@ nonisolated struct PagePreviewRenderer: Sendable {
   }
 
   private func drawText(_ element: WorkspaceElement, in bounds: CGRect) {
+    let color =
+      element.textColor.map {
+        UIColor(red: $0.red, green: $0.green, blue: $0.blue, alpha: $0.opacity)
+      } ?? Self.colors[element.color, default: .systemIndigo]
     let attributes: [NSAttributedString.Key: Any] = [
-      .font: UIFont.systemFont(ofSize: 28, weight: .medium),
-      .foregroundColor: Self.color(for: element.color),
+      .font: UIFont.systemFont(ofSize: element.resolvedFontSize, weight: .medium),
+      .foregroundColor: color,
     ]
     NSString(string: element.displayText).draw(
       with: bounds.insetBy(dx: 12, dy: 12),
@@ -338,7 +343,7 @@ nonisolated struct PagePreviewRenderer: Sendable {
   private func drawShape(_ element: WorkspaceElement, in bounds: CGRect) {
     let kind = element.shapeKind ?? .rectangle
     guard let path = Self.shapePaths[kind]?(bounds) else { return }
-    let color = Self.color(for: element.color)
+    let color = Self.colors[element.color, default: .systemIndigo]
     path.lineWidth = kind == .line || kind == .arrow ? 6 : 5
     path.lineCapStyle = .round
     path.lineJoinStyle = .round
@@ -390,9 +395,5 @@ nonisolated struct PagePreviewRenderer: Sendable {
       y: bounds.midY - size.height / 2,
       width: size.width,
       height: size.height)
-  }
-
-  private static func color(for color: WorkspaceElementColor) -> UIColor {
-    colors[color, default: .systemIndigo]
   }
 }

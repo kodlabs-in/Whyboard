@@ -27,6 +27,7 @@ final class EditorReliabilityUITests: XCTestCase {
     let circle = app.descendants(matching: .any)["Circle"].firstMatch
     XCTAssertTrue(circle.waitForExistence(timeout: 3))
 
+    app.buttons["Object Actions"].tap()
     app.buttons["workspace-delete-object"].tap()
     XCTAssertFalse(circle.waitForExistence(timeout: 1))
 
@@ -39,6 +40,36 @@ final class EditorReliabilityUITests: XCTestCase {
     XCTAssertTrue(redo.isEnabled)
     redo.tap()
     XCTAssertFalse(circle.waitForExistence(timeout: 1))
+  }
+
+  @MainActor
+  func testTextSizeAndColorControlsOnInfiniteCanvas() throws {
+    let app = try XCTUnwrap(app)
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infiniteCanvas", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+
+    app.buttons["Insert"].tap()
+    app.buttons["Text"].tap()
+    XCTAssertTrue(app.navigationBars["Edit Text"].waitForExistence(timeout: 3))
+    let editor = app.textViews.firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 3))
+    editor.tap()
+    editor.typeText("Large title")
+
+    let size = app.textFields["text-font-size"]
+    XCTAssertTrue(size.exists)
+    XCTAssertTrue(app.descendants(matching: .any)["text-color-picker"].firstMatch.exists)
+    size.tap()
+    size.typeKey("a", modifierFlags: .command)
+    size.typeText("42")
+    app.buttons["Save"].tap()
+
+    let textObject = app.descendants(matching: .any)["Text, Large title"].firstMatch
+    XCTAssertTrue(textObject.waitForExistence(timeout: 3))
+    textObject.doubleTap()
+    XCTAssertTrue(app.navigationBars["Edit Text"].waitForExistence(timeout: 3))
+    XCTAssertEqual(app.textFields["text-font-size"].value as? String, "42")
   }
 
   @MainActor

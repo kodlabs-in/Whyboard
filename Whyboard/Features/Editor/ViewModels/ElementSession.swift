@@ -128,12 +128,20 @@ final class ElementSession {
     commitFrame(frame.rotated(by: degrees), for: elementID)
   }
 
-  func updateSelectedText(_ text: String) {
-    updateSelected { $0.text = text }
+  func updateSelectedText(_ text: String, fontSize: Double, color: WorkspaceTextColor) {
+    guard (8...144).contains(fontSize), color.isValid else { return }
+    updateSelected {
+      $0.text = text
+      $0.fontSize = fontSize
+      $0.textColor = color
+    }
   }
 
   func updateSelectedColor(_ color: WorkspaceElementColor) {
-    updateSelected { $0.color = color }
+    updateSelected {
+      $0.color = color
+      if $0.kind == .text { $0.textColor = nil }
+    }
   }
 
   func updateImageAspectRatio(_ aspectRatio: Double, for elementID: UUID) {
@@ -164,6 +172,8 @@ final class ElementSession {
       text: copy.text,
       shapeKind: copy.shapeKind,
       color: copy.color,
+      fontSize: copy.fontSize,
+      textColor: copy.textColor,
       assetFilename: copy.assetFilename,
       displayName: copy.displayName,
       aspectRatio: copy.aspectRatio)

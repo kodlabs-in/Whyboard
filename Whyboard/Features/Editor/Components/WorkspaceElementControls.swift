@@ -27,13 +27,6 @@ struct WorkspaceObjectToolbar: View {
         onBringToFront: controller.bringSelectedToFront,
         onSendToBack: controller.sendSelectedToBack,
         onDelete: controller.deleteSelected)
-
-      if controller.selectedElement != nil {
-        Button("Delete Object", systemImage: "trash", action: controller.deleteSelected)
-          .tint(.red)
-          .keyboardShortcut(.delete, modifiers: [])
-          .accessibilityIdentifier("workspace-delete-object")
-      }
     }
   }
 }
@@ -85,6 +78,8 @@ struct WorkspaceElementActionsMenu: View {
           "Send to Back", systemImage: "square.3.layers.3d.bottom.filled", action: onSendToBack)
         Divider()
         Button("Delete Object", systemImage: "trash", role: .destructive, action: onDelete)
+          .keyboardShortcut(.delete, modifiers: [])
+          .accessibilityIdentifier("workspace-delete-object")
       } else {
         Text("Select an object in Arrange mode")
       }
@@ -110,7 +105,8 @@ struct WorkspaceElementActionsMenu: View {
           } label: {
             Label(
               color.name,
-              systemImage: color == element.color ? "checkmark.circle.fill" : "circle.fill")
+              systemImage: color == element.color && element.textColor == nil
+                ? "checkmark.circle.fill" : "circle.fill")
           }
         }
       }
@@ -121,41 +117,73 @@ struct WorkspaceElementActionsMenu: View {
 struct TextElementEditorRequest: Identifiable {
   let id: UUID
   let initialText: String
-  let onSave: (String) -> Void
+  let initialFontSize: Double
+  let initialColor: Color
+  let onSave: (String, Double, WorkspaceTextColor) -> Void
 }
 
 struct TextElementEditorSheet: View {
   @Environment(\.dismiss) private var dismiss
   @State private var text: String
+  @State private var fontSizeInput: String
+  @State private var textColor: Color
 
   let request: TextElementEditorRequest
 
   init(request: TextElementEditorRequest) {
     self.request = request
     _text = State(initialValue: request.initialText)
+    _fontSizeInput = State(initialValue: String(Int(request.initialFontSize.rounded())))
+    _textColor = State(initialValue: request.initialColor)
   }
 
   var body: some View {
     NavigationStack {
-      TextEditor(text: $text)
-        .font(.title3)
-        .padding(18)
-        .navigationTitle("Edit Text")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-          ToolbarItem(placement: .cancellationAction) {
-            Button("Cancel", action: dismiss.callAsFunction)
-          }
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Save", action: save)
-          }
+      Form {
+        Section("Text") {
+          TextEditor(text: $text)
+            .frame(minHeight: 140)
         }
+        Section("Style") {
+          HStack {
+            Text("Size (pt, 8–144)")
+            Spacer()
+            TextField("Size", text: $fontSizeInput)
+              .keyboardType(.numberPad)
+              .multilineTextAlignment(.trailing)
+              .frame(width: 72)
+              .accessibilityIdentifier("text-font-size")
+          }
+          ColorPicker("Text Color", selection: $textColor, supportsOpacity: true)
+            .accessibilityIdentifier("text-color-picker")
+        }
+      }
+      .navigationTitle("Edit Text")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel", action: dismiss.callAsFunction)
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Save", action: save)
+            .disabled(validFontSize == nil)
+        }
+      }
     }
     .presentationDetents([.medium, .large])
   }
 
+  private var validFontSize: Double? {
+    guard let size = Int(fontSizeInput), (8...144).contains(size) else { return nil }
+    return Double(size)
+  }
+
   private func save() {
-    request.onSave(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    guard let size = validFontSize else { return }
+    request.onSave(
+      text.trimmingCharacters(in: .whitespacesAndNewlines),
+      size,
+      WorkspaceTextColor(textColor))
     dismiss()
   }
 }

@@ -92,8 +92,8 @@ private struct WorkspaceElementVisual: View {
 
   private var textContent: some View {
     Text(element.displayText)
-      .font(.system(size: 28, weight: .medium, design: .rounded))
-      .foregroundStyle(element.color.swiftUIColor)
+      .font(.system(size: element.resolvedFontSize, weight: .medium, design: .rounded))
+      .foregroundStyle(element.textColor?.swiftUIColor ?? element.color.swiftUIColor)
       .multilineTextAlignment(.leading)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .padding(12)
@@ -207,6 +207,7 @@ private struct WorkspaceImageView: View {
 extension WorkspaceElementColor {
   private static let palette: [WorkspaceElementColor: Color] = [
     .graphite: Color(red: 0.18, green: 0.19, blue: 0.22),
+    .white: .white,
     .indigo: WhyboardTheme.accent,
     .blue: .blue,
     .teal: .teal,
@@ -220,5 +221,24 @@ extension WorkspaceElementColor {
 
   var swiftUIColor: Color {
     Self.palette[self, default: WhyboardTheme.accent]
+  }
+}
+
+extension WorkspaceTextColor {
+  init(_ color: Color) {
+    var red: CGFloat = 0
+    var green: CGFloat = 0
+    var blue: CGFloat = 0
+    var opacity: CGFloat = 1
+    UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &opacity)
+    self.init(
+      red: Double(red),
+      green: Double(green),
+      blue: Double(blue),
+      opacity: Double(opacity))
+  }
+
+  var swiftUIColor: Color {
+    Color(red: red, green: green, blue: blue, opacity: opacity)
   }
 }

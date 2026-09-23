@@ -184,6 +184,7 @@ final class WhyboardUITests: XCTestCase {
     XCTAssertTrue(circle.waitForExistence(timeout: 3))
     XCTAssertEqual(circle.frame.width, circle.frame.height, accuracy: 1)
 
+    app.buttons["Object Actions"].tap()
     let delete = app.buttons["workspace-delete-object"]
     XCTAssertTrue(delete.waitForExistence(timeout: 3))
     delete.tap()
