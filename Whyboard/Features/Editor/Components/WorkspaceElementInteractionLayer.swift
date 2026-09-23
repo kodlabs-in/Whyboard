@@ -45,6 +45,22 @@ private struct WorkspaceElementInteractionView: View {
   }
 
   var body: some View {
+    interactionSurface
+      .modifier(
+        WorkspaceElementAccessibilityIdentity(
+          element: element,
+          isSelected: isSelected,
+          onActivate: {
+            focusAndSelect()
+            onActivate(element)
+          },
+          onSelect: focusAndSelect)
+      )
+      .modifier(WorkspaceElementAccessibilityTransform(element: element, session: session))
+      .modifier(WorkspaceElementAccessibilityLifecycle(element: element, session: session))
+  }
+
+  private var interactionSurface: some View {
     Color.clear
       .contentShape(
         WorkspaceElementHitShape(
@@ -66,10 +82,6 @@ private struct WorkspaceElementInteractionView: View {
       }
       .gesture(moveGesture)
       .simultaneousGesture(rotationGesture)
-      .accessibilityElement(children: .contain)
-      .accessibilityLabel(element.accessibilityName)
-      .accessibilityHint("Double tap to select and edit this object")
-      .accessibilityIdentifier("workspace-element-\(element.kind.rawValue)")
   }
 
   @ViewBuilder
@@ -97,6 +109,7 @@ private struct WorkspaceElementInteractionView: View {
       .highPriorityGesture(resizeGesture)
       .accessibilityElement(children: .ignore)
       .accessibilityLabel("Resize object")
+      .accessibilityHint("Drag to resize the selected object")
       .accessibilityIdentifier("workspace-resize-handle")
     }
   }
@@ -169,6 +182,69 @@ private struct WorkspaceElementInteractionView: View {
       return frame.resizedPreservingAspectRatio(by: translation, scale: transform.scale)
     }
     return frame.resized(by: translation, scale: transform.scale)
+  }
+}
+
+private struct WorkspaceElementAccessibilityIdentity: ViewModifier {
+  let element: WorkspaceElement
+  let isSelected: Bool
+  let onActivate: () -> Void
+  let onSelect: () -> Void
+
+  func body(content: Content) -> some View {
+    content
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(element.accessibilityName)
+      .accessibilityValue(isSelected ? "Selected" : "Not selected")
+      .accessibilityHint("Double tap to select and edit. More actions can move, resize, or rotate.")
+      .accessibilityAddTraits(isSelected ? .isSelected : [])
+      .accessibilityIdentifier("workspace-element-\(element.kind.rawValue)")
+      .accessibilityAction(.default, onActivate)
+      .accessibilityAction(named: "Select", onSelect)
+  }
+}
+
+private struct WorkspaceElementAccessibilityTransform: ViewModifier {
+  let element: WorkspaceElement
+  let session: ElementSession
+
+  func body(content: Content) -> some View {
+    content
+      .accessibilityAction(named: "Move left") {
+        session.move(element.id, by: CGSize(width: -24, height: 0))
+      }
+      .accessibilityAction(named: "Move right") {
+        session.move(element.id, by: CGSize(width: 24, height: 0))
+      }
+      .accessibilityAction(named: "Move up") {
+        session.move(element.id, by: CGSize(width: 0, height: -24))
+      }
+      .accessibilityAction(named: "Move down") {
+        session.move(element.id, by: CGSize(width: 0, height: 24))
+      }
+      .accessibilityAction(named: "Make larger") { session.resize(element.id, by: 1.1) }
+      .accessibilityAction(named: "Make smaller") { session.resize(element.id, by: 0.9) }
+      .accessibilityAction(named: "Rotate clockwise") { session.rotate(element.id, by: 15) }
+      .accessibilityAction(named: "Rotate counterclockwise") {
+        session.rotate(element.id, by: -15)
+      }
+  }
+}
+
+private struct WorkspaceElementAccessibilityLifecycle: ViewModifier {
+  let element: WorkspaceElement
+  let session: ElementSession
+
+  func body(content: Content) -> some View {
+    content
+      .accessibilityAction(named: "Duplicate") {
+        session.select(element.id)
+        session.duplicateSelected()
+      }
+      .accessibilityAction(named: "Delete") {
+        session.select(element.id)
+        _ = session.deleteSelected()
+      }
   }
 }
 

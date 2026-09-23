@@ -18,7 +18,7 @@ extension LibraryController {
     let note = Note(folderID: folderID, paperStyle: paperStyle, kind: kind)
     context.insert(note)
     context.insert(Page(noteID: note.id, sortOrder: 0))
-    save(context)
+    guard save(context) else { return nil }
     return note.id
   }
 
@@ -88,7 +88,7 @@ extension LibraryController {
     pages.filter { $0.noteID == note.id }.forEach(context.delete)
     importedDocuments.filter { $0.noteID == note.id }.forEach(context.delete)
     context.delete(note)
-    save(context)
+    guard save(context) else { return }
 
     let noteID = note.id
     Task { await drawingRepository.deleteNote(noteID: noteID) }

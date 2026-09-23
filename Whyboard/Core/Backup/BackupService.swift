@@ -20,7 +20,6 @@ enum BackupCreationError: LocalizedError {
 private nonisolated struct BackupPackageInput: Sendable {
   let library: BackupLibrary
   let counts: BackupCounts
-  let noteIDs: Set<UUID>
   let appVersion: String
 }
 
@@ -38,10 +37,21 @@ private actor BackupPackageWorker {
     let staging = stagingURL()
     do {
       try Task.checkCancellation()
+      let referencedAttachmentPaths = try BackupValidator.referencedAttachmentPaths(
+        in: input.library)
       let sourceFiles = BackupFileUtilities.sourceFiles(
-        noteIDs: input.noteIDs,
+        library: input.library,
+        referencedAttachmentPaths: referencedAttachmentPaths,
         drawingRepository: drawingRepository)
-      try verifyAvailableStorage(for: sourceFiles)
+      let sourcePreflight = try BackupFileUtilities.preflight(sourceFiles)
+      try BackupValidator.validateResourceCounts(
+        BackupCounts(
+          folders: input.counts.folders,
+          notes: input.counts.notes,
+          pages: input.counts.pages,
+          importedDocuments: input.counts.importedDocuments,
+          payloadFiles: sourceFiles.count))
+      try verifyAvailableStorage(payloadBytes: sourcePreflight.totalBytes)
       try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
       let payloads = try copyPayloads(sourceFiles, to: staging, progress: progress)
       try Task.checkCancellation()
@@ -57,6 +67,7 @@ private actor BackupPackageWorker {
         payloads: payloads,
         appVersion: input.appVersion,
         to: staging)
+      _ = try BackupValidator.validate(package: staging)
       try Task.checkCancellation()
       let destination = backupURL()
       try FileManager.default.moveItem(at: staging, to: destination)
@@ -73,7 +84,10 @@ private actor BackupPackageWorker {
     to package: URL,
     progress: AsyncStream<Double>.Continuation
   ) throws -> [BackupPayload] {
-    try files.enumerated().map { index, source in
+    var payloads: [BackupPayload] = []
+    payloads.reserveCapacity(files.count)
+    var copiedBytes: Int64 = 0
+    for (index, source) in files.enumerated() {
       try Task.checkCancellation()
       guard BackupFileUtilities.isSafeRelativePath(source.relativePath) else {
         throw BackupFileError.unsafePath
@@ -83,13 +97,23 @@ private actor BackupPackageWorker {
         .appending(path: "Payload", directoryHint: .isDirectory)
         .appending(path: source.relativePath)
       try BackupFileUtilities.copyFile(from: source.url, to: destination)
+      let byteSize = try BackupFileUtilities.byteSize(of: destination)
+      guard byteSize <= BackupFileUtilities.maximumPayloadBytes(for: source.relativePath) else {
+        throw BackupValidationError.resourceLimitExceeded
+      }
+      let (nextTotal, overflow) = copiedBytes.addingReportingOverflow(byteSize)
+      guard !overflow, nextTotal <= ResourceLimits.maximumTotalPayloadBytes else {
+        throw BackupValidationError.resourceLimitExceeded
+      }
+      copiedBytes = nextTotal
       let payload = BackupPayload(
         relativePath: source.relativePath,
-        byteSize: try BackupFileUtilities.byteSize(of: destination),
+        byteSize: byteSize,
         sha256: try BackupFileUtilities.sha256(of: destination))
+      payloads.append(payload)
       progress.yield(Double(index + 1) / Double(max(files.count + 1, 1)))
-      return payload
     }
+    return payloads
   }
 
   private func writeManifest(
@@ -122,15 +146,14 @@ private actor BackupPackageWorker {
     }
   }
 
-  private func verifyAvailableStorage(for files: [BackupSourceFile]) throws {
-    let required = try files.reduce(Int64(5_000_000)) { total, file in
-      let size = try BackupFileUtilities.byteSize(of: file.url)
-      return total + size
+  private func verifyAvailableStorage(payloadBytes: Int64) throws {
+    guard let required = ResourceLimits.backupWorkingBytes(for: payloadBytes) else {
+      throw BackupValidationError.resourceLimitExceeded
     }
     let values = try drawingRepository.backupsDirectory.resourceValues(
       forKeys: [.volumeAvailableCapacityForImportantUsageKey])
     guard let available = values.volumeAvailableCapacityForImportantUsage else { return }
-    guard available > required * 2 else { throw BackupFileError.insufficientStorage }
+    guard available >= required else { throw BackupFileError.insufficientStorage }
   }
 
   private func stagingURL() -> URL {
@@ -177,7 +200,6 @@ struct BackupService {
         pages: pages.count,
         importedDocuments: importedDocuments.count,
         payloadFiles: 0),
-      noteIDs: Set(notes.map(\.id)),
       appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1")
     let (progress, continuation) = AsyncStream<Double>.makeStream()
     let progressTask = Task {

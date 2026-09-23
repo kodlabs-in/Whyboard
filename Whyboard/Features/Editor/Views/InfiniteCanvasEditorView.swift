@@ -1,4 +1,5 @@
 import Foundation
+import PencilKit
 import SwiftData
 import SwiftUI
 import UIKit
@@ -108,13 +109,17 @@ struct InfiniteCanvasEditorView: View {
     }
 
     ToolbarItemGroup(placement: .primaryAction) {
-      Button("Undo", systemImage: "arrow.uturn.backward", action: toolPickerController.undo)
-        .keyboardShortcut("z", modifiers: .command)
-        .disabled(!toolPickerController.canUndo)
+      Button("Undo", systemImage: "arrow.uturn.backward") {
+        Task { await editorController.undoHistory.undo() }
+      }
+      .keyboardShortcut("z", modifiers: .command)
+      .disabled(!editorController.undoHistory.canUndo)
 
-      Button("Redo", systemImage: "arrow.uturn.forward", action: toolPickerController.redo)
-        .keyboardShortcut("z", modifiers: [.command, .shift])
-        .disabled(!toolPickerController.canRedo)
+      Button("Redo", systemImage: "arrow.uturn.forward") {
+        Task { await editorController.undoHistory.redo() }
+      }
+      .keyboardShortcut("z", modifiers: [.command, .shift])
+      .disabled(!editorController.undoHistory.canRedo)
 
       Button("Zoom Out", systemImage: "minus.magnifyingglass", action: canvasController.zoomOut)
         .accessibilityIdentifier("canvas-zoom-out")
@@ -286,9 +291,11 @@ private struct InfiniteCanvasSurface: View {
       InfiniteCanvasView(
         drawing: session.drawing,
         drawsWithFinger: drawsWithFinger,
+        isDrawingEnabled: interactionMode == .draw,
         canvasController: canvasController,
         toolPickerController: toolPickerController,
-        onDrawingChanged: session.drawingDidChange)
+        onDrawingChanged: session.drawingDidChange,
+        onDrawingChangeCommitted: session.recordDrawingChange)
 
       if interactionMode == .arrange {
         WorkspaceElementInteractionLayer(
@@ -299,5 +306,8 @@ private struct InfiniteCanvasSurface: View {
       }
     }
     .accessibilityIdentifier("infinite-canvas")
+    .accessibilityValue(
+      session.drawing.strokes.count == 1
+        ? "1 stroke" : "\(session.drawing.strokes.count) strokes")
   }
 }

@@ -8,7 +8,6 @@ struct LibraryView: View {
   @Query(sort: [SortDescriptor(\Folder.sortOrder), SortDescriptor(\Folder.name)])
   var folders: [Folder]
   @Query(sort: \Note.updatedAt, order: .reverse) var notes: [Note]
-  @Query(sort: \Page.sortOrder) var pages: [Page]
   @Query private var importedDocuments: [ImportedDocument]
 
   @AppStorage(NoteSortField.storageKey, store: AppPreferences.store)
@@ -29,12 +28,9 @@ struct LibraryView: View {
   @State var documentOperation: DocumentOperationPresentation?
   @State var documentTask: Task<Void, Never>?
   @State var exportedPDF: PDFExportResult?
+  @State private var pageSummary = LibraryPageSummary()
 
   let drawingRepository: DrawingRepository
-
-  private var pageCounts: [UUID: Int] {
-    Dictionary(grouping: pages, by: \.noteID).mapValues(\.count)
-  }
 
   private var sortedNotes: [Note] {
     NoteSorting.sorted(notes, by: noteSortField, direction: noteSortDirection)
@@ -53,30 +49,26 @@ struct LibraryView: View {
     return stored == .automatic ? .defaultStyle : stored
   }
 
-  private var coverPages: [UUID: Page] {
-    pages.reduce(into: [:]) { result, page in
-      let currentOrder = result[page.noteID]?.sortOrder ?? Int.max
-      guard page.sortOrder < currentOrder else { return }
-      result[page.noteID] = page
-    }
+  private var pageSummaryRequest: LibraryPageSummaryRequest {
+    LibraryPageSummaryRequest(notes: notes)
   }
 
-  private var mutationContext: LibraryMutationContext {
+  private func mutationContext() throws -> LibraryMutationContext {
     LibraryMutationContext(
       folders: folders,
       notes: notes,
-      pages: pages,
+      pages: try fetchPages(),
       importedDocuments: importedDocuments,
       modelContext: modelContext,
       drawingRepository: drawingRepository)
   }
 
-  private var selectionPlan: LibrarySelectionPlan {
+  private func selectionPlan() throws -> LibrarySelectionPlan {
     LibrarySelectionPlan(
       selection: selection,
       folders: folders,
       notes: notes,
-      pages: pages)
+      pages: try fetchPages())
   }
 
   var body: some View {
@@ -144,6 +136,7 @@ struct LibraryView: View {
       clearDisposableCaches()
     }
     .onAppear(perform: migrateLegacyPaperStyles)
+    .task(id: pageSummaryRequest) { await refreshPageSummary() }
   }
 
   @ViewBuilder
@@ -179,14 +172,14 @@ struct LibraryView: View {
   }
 
   private func browserView(for location: LibraryLocation) -> some View {
-    LibraryBrowserView(
+    return LibraryBrowserView(
       title: controller.locationTitle(location, folders: folders),
       folders: controller.folders(in: location, from: folders),
       notes: controller.notes(in: location, from: sortedNotes, folders: folders),
       favoriteNotes: location == .root ? favoriteNotes : [],
       recentNotes: location == .root ? recentNotes : [],
-      pageCounts: pageCounts,
-      coverPages: coverPages,
+      pageCounts: pageSummary.pageCounts,
+      coverPages: pageSummary.coverPages,
       drawingRepository: drawingRepository,
       showsSettings: location == .root,
       onOpenFolder: { routes.append(.folder($0.id)) },
@@ -225,7 +218,11 @@ struct LibraryView: View {
   }
 
   private func confirmFolderDeletion(_ folder: Folder) {
-    controller.confirmFolderDeletion(folder, mutationContext: mutationContext)
+    do {
+      controller.confirmFolderDeletion(folder, mutationContext: try mutationContext())
+    } catch {
+      controller.errorMessage = error.localizedDescription
+    }
   }
 
   private func presentNoteCreation(in location: LibraryLocation) {
@@ -263,7 +260,7 @@ struct LibraryView: View {
         _ = try await DuplicationService(drawingRepository: drawingRepository)
           .duplicateNote(
             note,
-            pages: pages,
+            pages: fetchPages(noteIDs: [note.id]),
             notes: notes,
             documents: importedDocuments,
             context: modelContext)
@@ -282,12 +279,16 @@ struct LibraryView: View {
 
 private extension LibraryView {
   func confirmNoteDeletion(_ note: Note) {
-    controller.confirmNoteDeletion(
-      note,
-      pages: pages,
-      importedDocuments: importedDocuments,
-      context: modelContext,
-      drawingRepository: drawingRepository)
+    do {
+      controller.confirmNoteDeletion(
+        note,
+        pages: try fetchPages(noteIDs: [note.id]),
+        importedDocuments: importedDocuments,
+        context: modelContext,
+        drawingRepository: drawingRepository)
+    } catch {
+      controller.errorMessage = error.localizedDescription
+    }
   }
 
   func migrateLegacyPaperStyles() {
@@ -309,7 +310,7 @@ private extension LibraryView {
   }
 
   private func presentSelectionMove() {
-    let plan = selectionPlan
+    guard let plan = makeSelectionPlan() else { return }
     guard !plan.isEmpty else { return }
     controller.destinationPicker = DestinationPickerRequest(
       title: "Move \(selection.count) Items",
@@ -340,7 +341,7 @@ private extension LibraryView {
   }
 
   private func confirmSelectionDeletion() {
-    let plan = selectionPlan
+    guard let plan = makeSelectionPlan() else { return }
     guard !plan.isEmpty else { return }
     controller.confirmation = ConfirmationRequest(
       title: "Delete \(selection.count) Selected Items?",
@@ -355,7 +356,7 @@ private extension LibraryView {
     do {
       try BulkLibraryService().delete(
         plan: plan,
-        mutationContext: mutationContext)
+        mutationContext: try mutationContext())
       finishSelection()
       UIAccessibility.post(
         notification: .announcement,
@@ -369,12 +370,28 @@ private extension LibraryView {
     selection.removeAll()
     isSelecting = false
   }
-}
 
-enum LibraryRoute: Hashable {
-  case folder(UUID)
-  case note(UUID)
-  case settings
+  private func makeSelectionPlan() -> LibrarySelectionPlan? {
+    do {
+      return try selectionPlan()
+    } catch {
+      controller.errorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  private func refreshPageSummary() async {
+    do {
+      let store = LibraryPageSummaryStore(modelContainer: modelContext.container)
+      let summary = try await store.load()
+      try Task.checkCancellation()
+      pageSummary = summary
+    } catch is CancellationError {
+      return
+    } catch {
+      controller.errorMessage = error.localizedDescription
+    }
+  }
 }
 
 private struct NoteCreationRequest: Identifiable {

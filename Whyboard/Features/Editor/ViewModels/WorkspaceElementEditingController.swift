@@ -20,7 +20,6 @@ final class WorkspaceElementEditingController {
   @ObservationIgnored private let noteID: UUID
   @ObservationIgnored private let attachments: AttachmentRepository
   @ObservationIgnored private var resolveTarget: ((UUID?) -> ElementEditingTarget?)?
-  @ObservationIgnored private var onError: ((String) -> Void)?
 
   init(noteID: UUID, attachments: AttachmentRepository) {
     self.noteID = noteID
@@ -37,11 +36,10 @@ final class WorkspaceElementEditingController {
     onError: @escaping (String) -> Void
   ) {
     self.resolveTarget = resolveTarget
-    self.onError = onError
     mediaImportController.configure(
       noteID: noteID,
       onImported: { [weak self] pageID, image in
-        self?.insert(image, on: pageID)
+        self?.insert(image, on: pageID) == true
       },
       onError: onError)
   }
@@ -128,22 +126,16 @@ final class WorkspaceElementEditingController {
 
   func deleteSelected() {
     guard let target = activeTarget else { return }
-    guard let filename = target.session.deleteSelected() else { return }
-    Task {
-      await attachments.delete(filename: filename, noteID: noteID, pageID: target.pageID)
-    }
+    _ = target.session.deleteSelected()
   }
 
   private var activeTarget: ElementEditingTarget? {
     resolveTarget?(nil)
   }
 
-  private func insert(_ image: ImportedImageAsset, on pageID: UUID) {
-    guard let target = resolveTarget?(pageID) else {
-      onError?("Whyboard could not find the page for this attachment.")
-      return
-    }
+  private func insert(_ image: ImportedImageAsset, on pageID: UUID) -> Bool {
+    guard let target = resolveTarget?(pageID) else { return false }
     interactionMode = .arrange
-    target.session.addImage(image, at: target.insertionPoint)
+    return target.session.addImage(image, at: target.insertionPoint)
   }
 }

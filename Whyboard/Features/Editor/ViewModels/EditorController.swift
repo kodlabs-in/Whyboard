@@ -13,6 +13,7 @@ enum EditorSaveStatus: Equatable {
 
 @Observable
 final class EditorController {
+  let undoHistory: EditorUndoHistory
   private(set) var livePageIDs: Set<UUID> = []
   private(set) var activePageID: UUID?
   private(set) var saveStatus = EditorSaveStatus.saved
@@ -23,19 +24,33 @@ final class EditorController {
   private var visiblePageIDs: Set<UUID> = []
   private var sessions: [UUID: PageSession] = [:]
   private var elementSessions: [UUID: ElementSession] = [:]
+  private var previewTasks: [UUID: Task<Void, Never>] = [:]
   private var saveMetadata: (() throws -> Void)?
+  private var pendingSaveRegistration: PendingSaveRegistration?
+  private var closeRequested = false
 
-  init(note: Note, drawingRepository: DrawingRepository) {
+  init(
+    note: Note,
+    drawingRepository: DrawingRepository,
+    undoHistory: EditorUndoHistory = EditorUndoHistory()
+  ) {
     self.note = note
     self.drawingRepository = drawingRepository
+    self.undoHistory = undoHistory
+    undoHistory.setDiscardHandler { [weak self] scopes in
+      self?.collectUnusedAttachments(for: scopes)
+    }
   }
 
   func configure(saveMetadata: @escaping () throws -> Void) {
     self.saveMetadata = saveMetadata
-    drawingRepository.pendingSaves.register(noteID: note.id) { [weak self] in
-      guard let self else { return false }
-      return await self.flushAll()
-    }
+    closeRequested = false
+    guard pendingSaveRegistration == nil else { return }
+    pendingSaveRegistration = drawingRepository.pendingSaves.register(
+      noteID: note.id,
+      flusher: { [self] in
+        await flushPendingSaves()
+      })
   }
 
   func session(for page: Page, generatesPreview: Bool = true) -> PageSession {
@@ -47,6 +62,7 @@ final class EditorController {
       page: page,
       note: note,
       drawingRepository: drawingRepository,
+      undoHistory: undoHistory,
       generatesPreview: generatesPreview,
       saveMetadata: { [weak self] in try self?.saveMetadata?() },
       onStateChange: { [weak self] in self?.refreshSaveStatus() })
@@ -63,6 +79,7 @@ final class EditorController {
       page: page,
       note: note,
       canvasSize: canvasSize,
+      undoHistory: undoHistory,
       saveMetadata: { [weak self] in try self?.saveMetadata?() },
       onError: { [weak self] message in self?.errorMessage = message },
       onPreviewInvalidated: { [weak self] elements, revision in
@@ -90,6 +107,22 @@ final class EditorController {
     activePageID = pageID
   }
 
+  func updateActivePage(
+    scrollOffset: Double,
+    viewportHeight: Double,
+    pageHeight: Double,
+    orderedPageIDs: [UUID]
+  ) {
+    guard !orderedPageIDs.isEmpty, pageHeight > 0, viewportHeight > 0 else { return }
+    let pageSpacing = 28.0
+    let verticalPadding = 28.0
+    let viewportCenter = scrollOffset + viewportHeight / 2
+    let firstPageCenter = verticalPadding + pageHeight / 2
+    let rawIndex = ((viewportCenter - firstPageCenter) / (pageHeight + pageSpacing)).rounded()
+    let index = min(max(Int(rawIndex), 0), orderedPageIDs.count - 1)
+    activePageID = orderedPageIDs[index]
+  }
+
   func isPageLoaded(_ pageID: UUID) -> Bool {
     sessions[pageID]?.isLoaded == true
   }
@@ -101,6 +134,9 @@ final class EditorController {
       sessions[pageID]?.cancel()
       sessions[pageID] = nil
       elementSessions[pageID] = nil
+      previewTasks[pageID]?.cancel()
+      previewTasks[pageID] = nil
+      undoHistory.removeCommands(scope: pageID)
     }
   }
 
@@ -113,9 +149,10 @@ final class EditorController {
     return didSaveEverything
   }
 
-  func close() async {
-    guard await flushAll() else { return }
-    drawingRepository.pendingSaves.unregister(noteID: note.id)
+  @discardableResult
+  func close() async -> Bool {
+    closeRequested = true
+    return await flushPendingSaves()
   }
 
   func handleMemoryWarning() {
@@ -159,21 +196,43 @@ final class EditorController {
     return page.id
   }
 
-  func deletePage(_ page: Page, pages: [Page], context: ModelContext) {
+  @discardableResult
+  func deletePage(_ page: Page, pages: [Page], context: ModelContext) async -> Bool {
     guard pages.count > 1 else {
       errorMessage = "A note must always contain at least one page."
-      return
+      return false
     }
 
-    sessions[page.id]?.cancel()
-    sessions[page.id] = nil
-    elementSessions[page.id] = nil
-    context.delete(page)
-    PageOrdering.renumber(PageOrdering.ordered(pages.filter { $0.id != page.id }))
-    note.updatedAt = Date()
-    saveContext(context)
+    let pageID = page.id
+    let noteID = note.id
+    let orderedPages = PageOrdering.ordered(pages)
+    let deletedIndex = orderedPages.firstIndex { $0.id == pageID } ?? 0
+    if let session = sessions[pageID], !(await session.flush()) {
+      errorMessage = "Whyboard could not save this page before deleting it. Please try again."
+      return false
+    }
 
-    Task { await drawingRepository.deletePage(pageID: page.id, noteID: note.id) }
+    context.delete(page)
+    let remainingPages = orderedPages.filter { $0.id != pageID }
+    PageOrdering.renumber(remainingPages)
+    note.updatedAt = Date()
+    guard saveContext(context) else {
+      context.rollback()
+      return false
+    }
+
+    sessions[pageID]?.cancel()
+    sessions[pageID] = nil
+    elementSessions[pageID] = nil
+    previewTasks[pageID]?.cancel()
+    previewTasks[pageID] = nil
+    undoHistory.removeCommands(scope: pageID)
+    if activePageID == pageID {
+      let adjacentIndex = min(deletedIndex, remainingPages.count - 1)
+      activePageID = remainingPages[adjacentIndex].id
+    }
+    await drawingRepository.deletePage(pageID: pageID, noteID: noteID)
+    return true
   }
 
   func movePages(
@@ -188,7 +247,9 @@ final class EditorController {
     note.updatedAt = Date()
     saveContext(context)
   }
+}
 
+private extension EditorController {
   private func updateLiveWindow(orderedPageIDs: [UUID]) {
     let nextIDs = PageWindow.livePageIDs(
       orderedPageIDs: orderedPageIDs,
@@ -208,8 +269,12 @@ final class EditorController {
     guard let session = sessions[pageID] else { return }
     let canRelease = await session.flush()
     guard canRelease, !livePageIDs.contains(pageID) else { return }
+    undoHistory.removeCommands(scope: pageID)
     session.cancel()
     sessions[pageID] = nil
+    elementSessions[pageID] = nil
+    previewTasks[pageID]?.cancel()
+    previewTasks[pageID] = nil
   }
 
   private func refreshSaveStatus() {
@@ -225,19 +290,69 @@ final class EditorController {
     }
   }
 
+  private func flushPendingSaves() async -> Bool {
+    let didFlush = await flushAll()
+    if didFlush, closeRequested {
+      let pageIDs = Set(elementSessions.keys)
+      undoHistory.removeAllCommands()
+      await collectUnusedAttachmentsNow(for: pageIDs)
+      if let pendingSaveRegistration {
+        drawingRepository.pendingSaves.unregister(pendingSaveRegistration)
+        self.pendingSaveRegistration = nil
+      }
+    }
+    return didFlush
+  }
+
+  private func collectUnusedAttachments(for pageIDs: Set<UUID>) {
+    for pageID in pageIDs {
+      let currentFilenames = elementSessions[pageID]?.referencedAttachmentFilenames ?? []
+      let retainedFilenames = undoHistory.retainedAttachmentFilenames(scope: pageID)
+      let filenamesToKeep = currentFilenames.union(retainedFilenames)
+      let noteID = note.id
+      let attachments = drawingRepository.attachments
+      Task {
+        await attachments.removeUnreferencedFiles(
+          noteID: noteID,
+          pageID: pageID,
+          keeping: filenamesToKeep)
+      }
+    }
+  }
+
+  private func collectUnusedAttachmentsNow(for pageIDs: Set<UUID>) async {
+    for pageID in pageIDs {
+      let currentFilenames = elementSessions[pageID]?.referencedAttachmentFilenames ?? []
+      let retainedFilenames = undoHistory.retainedAttachmentFilenames(scope: pageID)
+      await drawingRepository.attachments.removeUnreferencedFiles(
+        noteID: note.id,
+        pageID: pageID,
+        keeping: currentFilenames.union(retainedFilenames))
+    }
+  }
+
   private func failureMessage(_ state: PageSaveState) -> String? {
     guard case .failed(let message) = state else { return nil }
     return message
   }
 
-  private func saveContext(_ context: ModelContext) {
+  @discardableResult
+  private func saveContext(_ context: ModelContext) -> Bool {
     do {
-      try context.save()
+      if let saveMetadata {
+        try saveMetadata()
+      } else {
+        try context.save()
+      }
+      return true
     } catch {
       errorMessage = error.localizedDescription
+      return false
     }
   }
+}
 
+private extension EditorController {
   private func schedulePreview(
     page: Page,
     elements: [WorkspaceElement],
@@ -249,13 +364,16 @@ final class EditorController {
     let layout = PagePreviewLayout(note: note)
     let drawingRepository = drawingRepository
 
-    Task {
+    previewTasks[pageID]?.cancel()
+    previewTasks[pageID] = Task {
+      guard !Task.isCancelled else { return }
       guard
         let drawing = await previewDrawing(
           current: currentDrawing,
           pageID: pageID,
           noteID: noteID)
       else { return }
+      guard !Task.isCancelled else { return }
       try? await drawingRepository.previews.store(
         drawing: drawing,
         elements: elements,

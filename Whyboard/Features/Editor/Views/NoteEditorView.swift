@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import Combine
 import Foundation
 import SwiftData
@@ -16,6 +17,7 @@ struct NoteEditorView: View {
   @State private var elementEditingController: WorkspaceElementEditingController
   @State private var scrollPosition: ScrollPosition
   @State private var currentScrollOffset: Double
+  @State private var pendingScrollPageID: UUID?
   @State private var pageToDelete: Page?
   @State private var showsPageOrganizer = false
   @State private var showsJumpToPage = false
@@ -71,6 +73,12 @@ struct NoteEditorView: View {
         max(0, Double(geometry.contentOffset.y + geometry.contentInsets.top))
       } action: { _, newValue in
         currentScrollOffset = newValue
+        let pageWidth = max(260, min(geometry.size.width - 48, 900))
+        controller.updateActivePage(
+          scrollOffset: newValue,
+          viewportHeight: geometry.size.height,
+          pageHeight: pageWidth / WhyboardTheme.pageAspectRatio,
+          orderedPageIDs: orderedPageIDs)
       }
       .onScrollPhaseChange { _, phase in
         if phase == .idle {
@@ -128,7 +136,10 @@ struct NoteEditorView: View {
     .onDisappear {
       Task { await controller.close() }
     }
-    .onChange(of: orderedPageIDs) { _, _ in controller.reconcile(pages: orderedPages) }
+    .onChange(of: orderedPageIDs) { _, _ in
+      controller.reconcile(pages: orderedPages)
+      performPendingScrollIfReady()
+    }
     .onChange(of: scenePhase) { _, newPhase in
       guard newPhase != .active else { return }
       persistScrollPosition()
@@ -152,6 +163,7 @@ struct NoteEditorView: View {
       pageNumber: index + 1,
       pageCount: orderedPages.count,
       isLive: controller.livePageIDs.contains(page.id),
+      isActive: controller.activePageID == page.id,
       paperStyle: resolvedPaperStyle,
       drawsWithFinger: drawsWithFinger,
       interactionMode: elementEditingController.interactionMode,
@@ -181,13 +193,17 @@ struct NoteEditorView: View {
     }
 
     ToolbarItemGroup(placement: .primaryAction) {
-      Button("Undo", systemImage: "arrow.uturn.backward", action: toolPickerController.undo)
-        .keyboardShortcut("z", modifiers: .command)
-        .disabled(!toolPickerController.canUndo)
+      Button("Undo", systemImage: "arrow.uturn.backward") {
+        Task { await controller.undoHistory.undo() }
+      }
+      .keyboardShortcut("z", modifiers: .command)
+      .disabled(!controller.undoHistory.canUndo)
 
-      Button("Redo", systemImage: "arrow.uturn.forward", action: toolPickerController.redo)
-        .keyboardShortcut("z", modifiers: [.command, .shift])
-        .disabled(!toolPickerController.canRedo)
+      Button("Redo", systemImage: "arrow.uturn.forward") {
+        Task { await controller.undoHistory.redo() }
+      }
+      .keyboardShortcut("z", modifiers: [.command, .shift])
+      .disabled(!controller.undoHistory.canRedo)
 
       Button("Add Page", systemImage: "plus", action: appendPage)
 
@@ -293,8 +309,19 @@ private extension NoteEditorView {
 
   private func scrollToPage(_ pageID: UUID) {
     controller.focus(pageID)
-    Task {
-      try? await Task.sleep(for: .milliseconds(120))
+    pendingScrollPageID = pageID
+    performPendingScrollIfReady()
+  }
+
+  private func performPendingScrollIfReady() {
+    guard
+      let pageID = pendingScrollPageID,
+      orderedPageIDs.contains(pageID)
+    else { return }
+    pendingScrollPageID = nil
+
+    Task { @MainActor in
+      await Task.yield()
       if reduceMotion {
         scrollPosition.scrollTo(id: pageID, anchor: .center)
       } else {
@@ -334,7 +361,13 @@ private extension NoteEditorView {
 
   private func deletePage(_ page: Page) {
     pageToDelete = nil
-    controller.deletePage(page, pages: pages, context: modelContext)
+    let wasActivePage = controller.activePageID == page.id
+    Task {
+      let didDelete = await controller.deletePage(page, pages: pages, context: modelContext)
+      if didDelete, wasActivePage, let pageID = controller.activePageID {
+        scrollToPage(pageID)
+      }
+    }
   }
 
   private func movePages(from offsets: IndexSet, to destination: Int) {

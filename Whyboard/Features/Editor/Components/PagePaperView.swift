@@ -6,6 +6,7 @@ struct PagePaperView: View {
   let pageNumber: Int
   let pageCount: Int
   let isLive: Bool
+  let isActive: Bool
   let paperStyle: NotePaperStyle
   let drawsWithFinger: Bool
   let interactionMode: WorkspaceInteractionMode
@@ -114,8 +115,10 @@ struct PagePaperView: View {
         CanonicalCanvasView(
           drawing: session.drawing,
           drawsWithFinger: drawsWithFinger,
+          isActive: isActive,
           toolPickerController: toolPickerController,
           onDrawingChanged: session.drawingDidChange,
+          onDrawingChangeCommitted: session.recordDrawingChange,
           onFocused: onFocus
         )
         .allowsHitTesting(interactionMode == .draw)
@@ -204,7 +207,7 @@ struct PagePaperView: View {
         Image(systemName: "ellipsis")
           .font(.body.weight(.semibold))
           .foregroundStyle(WhyboardTheme.pageControlColor(for: paperStyle))
-          .frame(width: 34, height: 30)
+          .frame(width: 44, height: 44)
           .background(.thinMaterial, in: Capsule())
       }
       .accessibilityLabel("Page \(pageNumber) actions")

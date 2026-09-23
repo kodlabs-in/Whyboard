@@ -7,7 +7,7 @@ struct LibraryBrowserView: View {
   let favoriteNotes: [Note]
   let recentNotes: [Note]
   let pageCounts: [UUID: Int]
-  let coverPages: [UUID: Page]
+  let coverPages: [UUID: LibraryPageCover]
   let drawingRepository: DrawingRepository
   let showsSettings: Bool
   let onOpenFolder: (Folder) -> Void
@@ -38,9 +38,12 @@ struct LibraryBrowserView: View {
     GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 18)
   ]
 
+  private var visibleContent: LibraryVisibleContent {
+    LibraryVisibleContent(searchText: searchText, folders: folders, notes: notes)
+  }
+
   private var matchingNotes: [Note] {
-    guard !searchText.isEmpty else { return notes }
-    return notes.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+    visibleContent.notes
   }
 
   var body: some View {
@@ -64,13 +67,13 @@ struct LibraryBrowserView: View {
 
   @ViewBuilder
   private var smartSections: some View {
-    if !isSelecting, !favoriteNotes.isEmpty {
+    if searchText.isEmpty, !isSelecting, !favoriteNotes.isEmpty {
       browserSection(title: "Favorites", count: favoriteNotes.count) {
         smartNoteStrip(favoriteNotes)
       }
     }
 
-    if !isSelecting, !recentNotes.isEmpty {
+    if searchText.isEmpty, !isSelecting, !recentNotes.isEmpty {
       browserSection(title: "Recent", count: recentNotes.count) {
         smartNoteStrip(recentNotes)
       }
@@ -79,8 +82,8 @@ struct LibraryBrowserView: View {
 
   @ViewBuilder
   private var folderSection: some View {
-    if !folders.isEmpty {
-      browserSection(title: "Folders", count: folders.count) {
+    if !visibleContent.folders.isEmpty {
+      browserSection(title: "Folders", count: visibleContent.folders.count) {
         folderGrid
       }
     }
@@ -99,7 +102,7 @@ struct LibraryBrowserView: View {
 
   private var folderGrid: some View {
     LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-      ForEach(folders) { folder in
+      ForEach(visibleContent.folders) { folder in
         Button {
           handleFolderTap(folder)
         } label: {
@@ -243,11 +246,7 @@ private extension LibraryBrowserView {
   }
 
   private var visibleItems: Set<LibrarySelectionItem> {
-    Set(orderedVisibleItems)
-  }
-
-  private var orderedVisibleItems: [LibrarySelectionItem] {
-    folders.map { .folder($0.id) } + matchingNotes.map { .note($0.id) }
+    visibleContent.selectionItems
   }
 
   private var selectionSystemImage: String {
@@ -330,5 +329,24 @@ private extension LibraryBrowserView {
     Button("Delete", systemImage: "trash", role: .destructive) {
       onDeleteNote(note)
     }
+  }
+}
+
+struct LibraryVisibleContent {
+  let folders: [Folder]
+  let notes: [Note]
+
+  init(searchText: String, folders: [Folder], notes: [Note]) {
+    guard !searchText.isEmpty else {
+      self.folders = folders
+      self.notes = notes
+      return
+    }
+    self.folders = []
+    self.notes = notes.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+  }
+
+  var selectionItems: Set<LibrarySelectionItem> {
+    Set(folders.map { .folder($0.id) } + notes.map { .note($0.id) })
   }
 }

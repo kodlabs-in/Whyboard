@@ -213,7 +213,11 @@ struct BackupRestoreTests {
     context.insert(page)
     try await repository.save(PKDrawing(), pageID: page.id, noteID: note.id)
     let source = directories.root.appending(path: "fixture.png")
-    try Data([10, 20, 30]).write(to: source)
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { context in
+      UIColor.orange.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+    }
+    try #require(image.pngData()).write(to: source)
     let filename = try await repository.attachments.importFile(
       at: source,
       noteID: note.id,

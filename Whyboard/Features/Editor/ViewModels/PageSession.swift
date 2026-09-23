@@ -13,6 +13,7 @@ enum PageSaveState: Equatable {
 @Observable
 final class PageSession {
   let page: Page
+  let undoHistory: EditorUndoHistory
   private(set) var drawing = PKDrawing()
   private(set) var state = PageSaveState.loading {
     didSet { onStateChange() }
@@ -35,6 +36,7 @@ final class PageSession {
     page: Page,
     note: Note,
     drawingRepository: DrawingRepository,
+    undoHistory: EditorUndoHistory = EditorUndoHistory(),
     generatesPreview: Bool = true,
     saveMetadata: @escaping () throws -> Void,
     onStateChange: @escaping () -> Void
@@ -42,6 +44,7 @@ final class PageSession {
     self.page = page
     self.note = note
     self.drawingRepository = drawingRepository
+    self.undoHistory = undoHistory
     self.generatesPreview = generatesPreview
     self.saveMetadata = saveMetadata
     self.onStateChange = onStateChange
@@ -70,6 +73,21 @@ final class PageSession {
     scheduleSave()
   }
 
+  func recordDrawingChange(from previousDrawing: PKDrawing, to currentDrawing: PKDrawing) {
+    guard previousDrawing != currentDrawing else { return }
+    undoHistory.record(
+      scope: page.id,
+      estimatedByteCost: estimatedByteCost(previousDrawing, currentDrawing),
+      undo: { [weak self] in
+        guard let self else { return false }
+        return await applyHistoryDrawing(previousDrawing)
+      },
+      redo: { [weak self] in
+        guard let self else { return false }
+        return await applyHistoryDrawing(currentDrawing)
+      })
+  }
+
   @discardableResult
   func flush() async -> Bool {
     debounceTask?.cancel()
@@ -91,6 +109,37 @@ final class PageSession {
     isCancelled = true
     debounceTask?.cancel()
     debounceTask = nil
+    persistenceTask?.cancel()
+    previewTask?.cancel()
+  }
+
+  private func applyHistoryDrawing(_ targetDrawing: PKDrawing) async -> Bool {
+    guard hasLoaded, !isCancelled else { return false }
+    guard await flush() else { return false }
+
+    let previousDrawing = drawing
+    let previousChangeSequence = changeSequence
+    let previousPersistedSequence = persistedSequence
+    drawing = targetDrawing
+    changeSequence += 1
+    state = .dirty
+
+    guard !(await flush()) else { return true }
+
+    let failedState = state
+    drawing = previousDrawing
+    do {
+      try await drawingRepository.save(
+        previousDrawing,
+        pageID: page.id,
+        noteID: note.id)
+      changeSequence = previousChangeSequence
+      persistedSequence = previousPersistedSequence
+      state = failedState
+    } catch {
+      state = .failed(error.localizedDescription)
+    }
+    return false
   }
 
   private func scheduleSave() {
@@ -127,7 +176,7 @@ final class PageSession {
   }
 
   private func persistenceLoop() async {
-    while persistedSequence < changeSequence, !isCancelled {
+    while persistedSequence < changeSequence, !isCancelled, !Task.isCancelled {
       let snapshot = drawing
       let sequence = changeSequence
       state = .saving
@@ -177,8 +226,10 @@ final class PageSession {
     let elements = WorkspaceElementCoding.decode(page.workspaceElementsData)
     let layout = PagePreviewLayout(note: note)
     let previews = drawingRepository.previews
+    previewTask?.cancel()
     previewTask = Task {
       do {
+        try Task.checkCancellation()
         try await previews.store(
           drawing: drawing,
           elements: elements,
@@ -192,5 +243,11 @@ final class PageSession {
         return
       }
     }
+  }
+
+  private func estimatedByteCost(_ first: PKDrawing, _ second: PKDrawing) -> Int {
+    let (sum, overflow) = first.dataRepresentation().count.addingReportingOverflow(
+      second.dataRepresentation().count)
+    return overflow ? .max : sum
   }
 }

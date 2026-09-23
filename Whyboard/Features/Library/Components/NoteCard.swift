@@ -3,7 +3,7 @@ import SwiftUI
 struct NoteCard: View {
   let note: Note
   let pageCount: Int
-  let previewPage: Page?
+  let previewPage: LibraryPageCover?
   let drawingRepository: DrawingRepository
   var isSelecting = false
   var isSelected = false
@@ -61,7 +61,7 @@ struct NoteCard: View {
         if let previewPage {
           PagePreviewView(
             descriptor: PagePreviewDescriptor(
-              page: previewPage,
+              coverPage: previewPage,
               note: note,
               paperStyle: paperStyle),
             drawingRepository: drawingRepository,
@@ -113,7 +113,7 @@ struct NoteCard: View {
         Image(systemName: note.isFavorite == true ? "star.fill" : "star")
           .font(.body.weight(.semibold))
           .foregroundStyle(note.isFavorite == true ? .yellow : .secondary)
-          .frame(width: 34, height: 34)
+          .frame(width: 44, height: 44)
           .background(.regularMaterial, in: Circle())
       }
       .buttonStyle(.plain)

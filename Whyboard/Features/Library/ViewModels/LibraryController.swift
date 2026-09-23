@@ -4,10 +4,18 @@ import SwiftUI
 
 @Observable
 final class LibraryController {
+  typealias SaveAction = @MainActor (ModelContext) throws -> Void
+
   var nameEditor: NameEditorRequest?
   var destinationPicker: DestinationPickerRequest?
   var confirmation: ConfirmationRequest?
   var errorMessage: String?
+
+  @ObservationIgnored private let saveAction: SaveAction
+
+  init(saveAction: @escaping SaveAction = { try $0.save() }) {
+    self.saveAction = saveAction
+  }
 
   var confirmationIsPresented: Bool {
     get { confirmation != nil }
@@ -67,11 +75,15 @@ final class LibraryController {
     }
   }
 
-  func save(_ context: ModelContext) {
+  @discardableResult
+  func save(_ context: ModelContext) -> Bool {
     do {
-      try context.save()
+      try saveAction(context)
+      return true
     } catch {
+      context.rollback()
       errorMessage = error.localizedDescription
+      return false
     }
   }
 }

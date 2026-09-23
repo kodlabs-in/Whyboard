@@ -110,7 +110,7 @@ extension LibraryController {
     mutationContext.folders
       .filter { folderIDs.contains($0.id) }
       .forEach(mutationContext.modelContext.delete)
-    save(mutationContext.modelContext)
+    guard save(mutationContext.modelContext) else { return }
 
     let drawingRepository = mutationContext.drawingRepository
     Task {

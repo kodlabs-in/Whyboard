@@ -4,6 +4,8 @@ import PDFKit
 enum DocumentStorageError: LocalizedError, Sendable {
   case invalidPDF
   case encryptedPDF
+  case resourceLimitExceeded
+  case invalidPageGeometry
   case copyFailed
   case missingDocument
 
@@ -13,6 +15,10 @@ enum DocumentStorageError: LocalizedError, Sendable {
       "Choose a valid PDF document."
     case .encryptedPDF:
       "Password-protected PDFs cannot be imported."
+    case .resourceLimitExceeded:
+      "This PDF is too large to import safely."
+    case .invalidPageGeometry:
+      "This PDF contains a page size Whyboard cannot display safely."
     case .copyFailed:
       "Whyboard couldn't copy this PDF into the note."
     case .missingDocument:
@@ -25,6 +31,54 @@ struct StoredPDF: Sendable {
   let id: UUID
   let filename: String
   let pageCount: Int
+}
+
+nonisolated struct ValidatedPDF: Sendable {
+  let pageCount: Int
+  let byteSize: Int64
+}
+
+nonisolated enum PDFResourceValidator {
+  static func validate(at source: URL, expectedPageCount: Int? = nil) throws -> ValidatedPDF {
+    let byteSize: Int64
+    do {
+      byteSize = try ImportFilePreflight.inspectRegularFile(
+        source,
+        maximumBytes: ResourceLimits.maximumPDFSourceBytes)
+    } catch ImportFilePreflightError.invalidSource {
+      throw DocumentStorageError.invalidPDF
+    } catch {
+      throw DocumentStorageError.resourceLimitExceeded
+    }
+    try Task.checkCancellation()
+    guard let document = PDFDocument(url: source) else {
+      throw DocumentStorageError.invalidPDF
+    }
+    guard !document.isEncrypted else { throw DocumentStorageError.encryptedPDF }
+    guard
+      document.pageCount > 0,
+      document.pageCount <= ResourceLimits.maximumPDFPages,
+      expectedPageCount.map({ $0 == document.pageCount }) ?? true
+    else { throw DocumentStorageError.resourceLimitExceeded }
+    for index in 0..<document.pageCount {
+      try Task.checkCancellation()
+      guard let page = document.page(at: index) else {
+        throw DocumentStorageError.invalidPDF
+      }
+      let bounds = page.bounds(for: .mediaBox)
+      guard
+        bounds.origin.x.isFinite,
+        bounds.origin.y.isFinite,
+        bounds.width.isFinite,
+        bounds.height.isFinite,
+        bounds.width > 0,
+        bounds.height > 0,
+        bounds.width <= ResourceLimits.maximumPDFPageDimension,
+        bounds.height <= ResourceLimits.maximumPDFPageDimension
+      else { throw DocumentStorageError.invalidPageGeometry }
+    }
+    return ValidatedPDF(pageCount: document.pageCount, byteSize: byteSize)
+  }
 }
 
 actor DocumentRepository {
@@ -40,21 +94,54 @@ actor DocumentRepository {
   func importPDF(at source: URL, noteID: UUID, documentID: UUID = UUID()) throws -> StoredPDF {
     let didAccess = source.startAccessingSecurityScopedResource()
     defer { if didAccess { source.stopAccessingSecurityScopedResource() } }
-    guard let document = PDFDocument(url: source), document.pageCount > 0 else {
+
+    do {
+      let byteSize = try ImportFilePreflight.inspectRegularFile(
+        source,
+        maximumBytes: ResourceLimits.maximumPDFSourceBytes)
+      try ImportFilePreflight.requireCapacity(for: byteSize, at: rootDirectory)
+    } catch ImportFilePreflightError.invalidSource {
       throw DocumentStorageError.invalidPDF
+    } catch let error as ImportFilePreflightError {
+      switch error {
+      case .resourceLimitExceeded, .insufficientStorage:
+        throw DocumentStorageError.resourceLimitExceeded
+      case .invalidSource:
+        throw DocumentStorageError.invalidPDF
+      }
+    } catch {
+      throw DocumentStorageError.copyFailed
     }
-    guard !document.isEncrypted else { throw DocumentStorageError.encryptedPDF }
 
     let filename = "\(documentID.uuidString.lowercased()).pdf"
     let destination = fileURL(noteID: noteID, documentID: documentID)
+    let staging = noteDirectory(noteID)
+      .appending(path: ".import-\(UUID().uuidString.lowercased()).pdf")
     do {
       try fileManager.createDirectory(
         at: noteDirectory(noteID),
         withIntermediateDirectories: true)
-      try fileManager.copyItem(at: source, to: destination)
-      return StoredPDF(id: documentID, filename: filename, pageCount: document.pageCount)
+      try fileManager.copyItem(at: source, to: staging)
     } catch {
-      try? fileManager.removeItem(at: destination)
+      try? fileManager.removeItem(at: staging)
+      throw DocumentStorageError.copyFailed
+    }
+
+    let validated: ValidatedPDF
+    do {
+      validated = try PDFResourceValidator.validate(at: staging)
+    } catch {
+      try? fileManager.removeItem(at: staging)
+      throw error
+    }
+    do {
+      guard !fileManager.fileExists(atPath: destination.path) else {
+        throw DocumentStorageError.copyFailed
+      }
+      try fileManager.moveItem(at: staging, to: destination)
+      return StoredPDF(id: documentID, filename: filename, pageCount: validated.pageCount)
+    } catch {
+      try? fileManager.removeItem(at: staging)
       throw DocumentStorageError.copyFailed
     }
   }

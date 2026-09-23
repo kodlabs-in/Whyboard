@@ -27,13 +27,15 @@ final class WhyboardUITests: XCTestCase {
     selectNoteType("new-note-type-infinitePages", in: app)
 
     XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.otherElements["Page 1"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.descendants(matching: .any)["Page 1"].firstMatch.waitForExistence(timeout: 5))
 
     let addPageButton = app.buttons["Add Page"].firstMatch
     XCTAssertTrue(addPageButton.waitForExistence(timeout: 3))
     addPageButton.tap()
 
-    XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.descendants(matching: .any)["Page 2"].firstMatch.waitForExistence(timeout: 5))
 
     app.buttons["Arrange Pages"].tap()
     XCTAssertTrue(app.buttons["page-organizer-page-1"].waitForExistence(timeout: 3))
@@ -49,7 +51,8 @@ final class WhyboardUITests: XCTestCase {
     jumpField.typeText(XCUIKeyboardKey.delete.rawValue)
     jumpField.typeText("2")
     app.buttons["jump-to-page-go"].tap()
-    XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 3))
+    XCTAssertTrue(
+      app.descendants(matching: .any)["Page 2"].firstMatch.waitForExistence(timeout: 3))
     attachScreenshot(named: "Editor with two pages")
   }
 
@@ -66,7 +69,8 @@ final class WhyboardUITests: XCTestCase {
     let duplicatePage = app.buttons["Duplicate Page"]
     XCTAssertTrue(duplicatePage.waitForExistence(timeout: 3))
     duplicatePage.tap()
-    XCTAssertTrue(app.otherElements["Page 2"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.descendants(matching: .any)["Page 2"].firstMatch.waitForExistence(timeout: 5))
 
     app.navigationBars["Untitled Note"].buttons.element(boundBy: 0).tap()
     let originalTitle = app.staticTexts["Untitled Note"].firstMatch
@@ -127,9 +131,9 @@ final class WhyboardUITests: XCTestCase {
     app.buttons["Insert"].tap()
     app.buttons["Shape"].tap()
     app.buttons["Rectangle"].tap()
-    XCTAssertTrue(app.otherElements["Rectangle"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.descendants(matching: .any)["Rectangle"].waitForExistence(timeout: 3))
 
-    let shape = app.otherElements["Rectangle"].firstMatch
+    let shape = app.descendants(matching: .any)["Rectangle"].firstMatch
     let resizeHandle = app.otherElements["Resize object"].firstMatch
     XCTAssertTrue(shape.waitForExistence(timeout: 3))
     XCTAssertTrue(resizeHandle.waitForExistence(timeout: 3))
@@ -160,7 +164,7 @@ final class WhyboardUITests: XCTestCase {
     editor.typeText("A visual idea")
     app.buttons["Save"].tap()
 
-    let textObject = app.otherElements["Text, A visual idea"]
+    let textObject = app.descendants(matching: .any)["Text, A visual idea"].firstMatch
     XCTAssertTrue(textObject.waitForExistence(timeout: 3))
     attachScreenshot(named: "Text object on page")
   }
@@ -176,7 +180,7 @@ final class WhyboardUITests: XCTestCase {
     app.buttons["Shape"].tap()
     app.buttons["Circle"].tap()
 
-    let circle = app.otherElements["Circle"].firstMatch
+    let circle = app.descendants(matching: .any)["Circle"].firstMatch
     XCTAssertTrue(circle.waitForExistence(timeout: 3))
     XCTAssertEqual(circle.frame.width, circle.frame.height, accuracy: 1)
 

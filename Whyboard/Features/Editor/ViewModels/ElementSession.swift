@@ -4,6 +4,11 @@ import Observation
 
 @Observable
 final class ElementSession {
+  private struct Snapshot: Equatable {
+    let elements: [WorkspaceElement]
+    let selectedElementID: UUID?
+  }
+
   private(set) var elements: [WorkspaceElement]
   private(set) var selectedElementID: UUID?
 
@@ -11,6 +16,7 @@ final class ElementSession {
 
   private let note: Note
   private let canvasSize: CGSize
+  private let undoHistory: EditorUndoHistory?
   private let saveMetadata: () throws -> Void
   private let onError: (String) -> Void
   private let onPreviewInvalidated: ([WorkspaceElement], Int64) -> Void
@@ -19,6 +25,7 @@ final class ElementSession {
     page: Page,
     note: Note,
     canvasSize: CGSize,
+    undoHistory: EditorUndoHistory? = nil,
     saveMetadata: @escaping () throws -> Void,
     onError: @escaping (String) -> Void,
     onPreviewInvalidated: @escaping ([WorkspaceElement], Int64) -> Void = { _, _ in }
@@ -26,6 +33,7 @@ final class ElementSession {
     self.page = page
     self.note = note
     self.canvasSize = canvasSize
+    self.undoHistory = undoHistory
     self.saveMetadata = saveMetadata
     self.onError = onError
     self.onPreviewInvalidated = onPreviewInvalidated
@@ -38,6 +46,10 @@ final class ElementSession {
 
   var selectedElement: WorkspaceElement? {
     element(withID: selectedElementID)
+  }
+
+  var referencedAttachmentFilenames: Set<String> {
+    Set(elements.compactMap(\.assetFilename))
   }
 
   @discardableResult
@@ -62,11 +74,11 @@ final class ElementSession {
   }
 
   @discardableResult
-  func addImage(_ image: ImportedImageAsset, at point: CGPoint) -> UUID {
+  func addImage(_ image: ImportedImageAsset, at point: CGPoint) -> Bool {
     let size = WorkspaceElementFrame.aspectFittedSize(
       aspectRatio: image.aspectRatio,
       inside: CGSize(width: 360, height: 320))
-    return append(
+    return appendIfPersisted(
       WorkspaceElement(
         kind: .image,
         frame: defaultFrame(centeredAt: point, size: size),
@@ -86,6 +98,34 @@ final class ElementSession {
 
   func commitFrame(_ frame: WorkspaceElementFrame, for elementID: UUID) {
     updateFrame(frame, for: elementID, savesChanges: true)
+  }
+
+  func move(_ elementID: UUID, by offset: CGSize) {
+    guard let frame = element(withID: elementID)?.frame else { return }
+    select(elementID)
+    commitFrame(frame.translated(by: offset, scale: 1), for: elementID)
+  }
+
+  func resize(_ elementID: UUID, by scale: Double) {
+    guard scale.isFinite, scale > 0 else { return }
+    guard let element = element(withID: elementID) else { return }
+    let translation = CGSize(
+      width: element.frame.width * (scale - 1),
+      height: element.frame.height * (scale - 1))
+    let frame: WorkspaceElementFrame
+    if element.kind == .image || element.shapeKind?.preservesAspectRatio == true {
+      frame = element.frame.resizedPreservingAspectRatio(by: translation, scale: 1)
+    } else {
+      frame = element.frame.resized(by: translation, scale: 1)
+    }
+    select(elementID)
+    commitFrame(frame, for: elementID)
+  }
+
+  func rotate(_ elementID: UUID, by degrees: Double) {
+    guard let frame = element(withID: elementID)?.frame else { return }
+    select(elementID)
+    commitFrame(frame.rotated(by: degrees), for: elementID)
   }
 
   func updateSelectedText(_ text: String) {
@@ -174,6 +214,13 @@ final class ElementSession {
     return element.id
   }
 
+  private func appendIfPersisted(_ element: WorkspaceElement) -> Bool {
+    let previousSelection = selectedElementID
+    elements.append(element)
+    selectedElementID = element.id
+    return persist(restoringSelection: previousSelection)
+  }
+
   private func updateFrame(
     _ frame: WorkspaceElementFrame,
     for elementID: UUID,
@@ -212,9 +259,14 @@ final class ElementSession {
   private func defaultFrame(centeredAt point: CGPoint, size: CGSize) -> WorkspaceElementFrame {
     WorkspaceElementFrame(center: point, size: size).clamped(to: canvasSize)
   }
+}
 
+private extension ElementSession {
   @discardableResult
-  private func persist(restoringSelection previousSelection: UUID?) -> Bool {
+  private func persist(
+    restoringSelection previousSelection: UUID?,
+    recordsUndo: Bool = true
+  ) -> Bool {
     let previousData = page.workspaceElementsData
     let previousRevision = page.contentRevision
     let previousPageUpdate = page.updatedAt
@@ -228,6 +280,22 @@ final class ElementSession {
       note.updatedAt = now
       try saveMetadata()
       onPreviewInvalidated(elements, page.contentRevision)
+      if recordsUndo {
+        let previousElements = WorkspaceElementCoding.decode(previousData)
+        let previousSnapshot = Snapshot(
+          elements: previousElements,
+          selectedElementID: previousElements.contains { $0.id == previousSelection }
+            ? previousSelection : nil)
+        let currentSnapshot = Snapshot(
+          elements: elements,
+          selectedElementID: selectedElementID)
+        recordUndo(
+          from: previousSnapshot,
+          to: currentSnapshot,
+          estimatedByteCost: combinedByteCount(
+            previousData?.count ?? 0,
+            page.workspaceElementsData?.count ?? 0))
+      }
       return true
     } catch {
       elements = WorkspaceElementCoding.decode(previousData)
@@ -239,5 +307,36 @@ final class ElementSession {
       onError(error.localizedDescription)
       return false
     }
+  }
+
+  private func recordUndo(
+    from previous: Snapshot,
+    to current: Snapshot,
+    estimatedByteCost: Int
+  ) {
+    guard previous != current else { return }
+    undoHistory?.record(
+      scope: page.id,
+      estimatedByteCost: estimatedByteCost,
+      referencedAttachmentFilenames: referencedAttachmentFilenames(in: previous)
+        .union(referencedAttachmentFilenames(in: current)),
+      undo: { [weak self] in self?.apply(previous) ?? false },
+      redo: { [weak self] in self?.apply(current) ?? false })
+  }
+
+  private func apply(_ snapshot: Snapshot) -> Bool {
+    let rollbackSelection = selectedElementID
+    elements = snapshot.elements
+    selectedElementID = snapshot.selectedElementID
+    return persist(restoringSelection: rollbackSelection, recordsUndo: false)
+  }
+
+  private func combinedByteCount(_ first: Int, _ second: Int) -> Int {
+    let (sum, overflow) = first.addingReportingOverflow(second)
+    return overflow ? .max : sum
+  }
+
+  private func referencedAttachmentFilenames(in snapshot: Snapshot) -> Set<String> {
+    Set(snapshot.elements.compactMap(\.assetFilename))
   }
 }

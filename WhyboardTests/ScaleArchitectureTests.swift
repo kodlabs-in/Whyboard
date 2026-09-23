@@ -24,6 +24,63 @@ struct ScaleArchitectureTests {
     #expect(recentDates == recentDates.sorted(by: >))
   }
 
+  @Test func largeLibraryPageSummaryCountsPagesAndChoosesTheFirstCoverInOneIndex() {
+    let noteIDs = (0..<1_000).map { _ in UUID() }
+    let pages = (0..<20_000).map { index in
+      Page(noteID: noteIDs[index % noteIDs.count], sortOrder: 19_999 - index)
+    }
+
+    let summary = LibraryPageSummary(pages: pages)
+
+    #expect(summary.pageCounts.count == 1_000)
+    #expect(summary.pageCounts.values.allSatisfy { $0 == 20 })
+    for (noteID, cover) in summary.coverPages {
+      let expectedOrder = pages.lazy
+        .filter { $0.noteID == noteID }
+        .map(\.sortOrder)
+        .min()
+      #expect(cover.sortOrder == expectedOrder)
+    }
+  }
+
+  @Test func swiftDataPageSummaryStoreAggregatesAcrossProjectedBatches() async throws {
+    let schema = Schema([Page.self])
+    let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+    let container = try ModelContainer(for: schema, configurations: [configuration])
+    let context = container.mainContext
+    let noteIDs = [UUID(), UUID()]
+    let expectedCover = Page(noteID: noteIDs[1], sortOrder: 0, contentRevision: 7)
+    expectedCover.workspaceElementsData = Data("[]".utf8)
+    context.insert(expectedCover)
+    for index in 1..<10 {
+      context.insert(Page(noteID: noteIDs[(index + 1) % noteIDs.count], sortOrder: index))
+    }
+    try context.save()
+
+    let summary = try await LibraryPageSummaryStore(modelContainer: container)
+      .load(batchSize: 4)
+
+    #expect(summary.pageCounts[noteIDs[0]] == 5)
+    #expect(summary.pageCounts[noteIDs[1]] == 5)
+    #expect(summary.coverPages[noteIDs[0]]?.sortOrder == 1)
+    #expect(summary.coverPages[noteIDs[1]]?.pageID == expectedCover.id)
+    #expect(summary.coverPages[noteIDs[1]]?.contentRevision == 7)
+    #expect(summary.coverPages[noteIDs[1]]?.workspaceElementsData == Data("[]".utf8))
+  }
+
+  @Test func pageSummaryRequestTracksNoteRevisionButNotLastOpenedAt() {
+    let note = Note(
+      folderID: UUID(),
+      updatedAt: Date(timeIntervalSince1970: 100))
+    let initial = LibraryPageSummaryRequest(notes: [note])
+
+    note.lastOpenedAt = Date(timeIntervalSince1970: 200)
+    #expect(LibraryPageSummaryRequest(notes: [note]) == initial)
+
+    note.updatedAt = Date(timeIntervalSince1970: 300)
+    #expect(LibraryPageSummaryRequest(notes: [note]) != initial)
+  }
+
   private func verifyPersistedNotebook(pageCount: Int) async throws {
     let fixture = try await StressFixtureFactory.notebook(pageCount: pageCount)
     defer { try? FileManager.default.removeItem(at: fixture.directories.root) }

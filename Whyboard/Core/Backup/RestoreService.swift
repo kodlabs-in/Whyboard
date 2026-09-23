@@ -46,7 +46,10 @@ private actor RestorePackageWorker {
     defer { if didAccess { source.stopAccessingSecurityScopedResource() } }
     do {
       try Task.checkCancellation()
-      try FileManager.default.copyItem(at: source, to: staging)
+      let sourceManifest = try BackupValidator.validate(package: source)
+      try verifyAvailableStorage(for: sourceManifest, source: source)
+      try Task.checkCancellation()
+      try copyPackage(source, to: staging, manifest: sourceManifest)
       let manifest = try BackupValidator.validate(package: staging)
       return PreparedRestorePackage(staging: staging, manifest: manifest)
     } catch {
@@ -55,12 +58,48 @@ private actor RestorePackageWorker {
     }
   }
 
+  private func copyPackage(
+    _ source: URL,
+    to destination: URL,
+    manifest: WhyboardBackupManifest
+  ) throws {
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try BackupFileUtilities.copyFile(
+      from: source.appending(path: "manifest.json"),
+      to: destination.appending(path: "manifest.json"))
+    for payload in manifest.payloads {
+      try Task.checkCancellation()
+      try BackupFileUtilities.copyFile(
+        from: source.appending(path: "Payload").appending(path: payload.relativePath),
+        to: destination.appending(path: "Payload").appending(path: payload.relativePath))
+    }
+  }
+
+  private func verifyAvailableStorage(
+    for manifest: WhyboardBackupManifest,
+    source: URL
+  ) throws {
+    let payloadBytes = try BackupValidator.totalPayloadBytes(manifest)
+    let manifestBytes = try BackupFileUtilities.byteSize(
+      of: source.appending(path: "manifest.json"))
+    guard
+      let required = ResourceLimits.restoreWorkingBytes(
+        for: payloadBytes,
+        packageBytes: manifestBytes)
+    else { throw BackupValidationError.resourceLimitExceeded }
+    let values = try drawingRepository.backupsDirectory.resourceValues(
+      forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+    guard let available = values.volumeAvailableCapacityForImportantUsage else { return }
+    guard available >= required else { throw BackupFileError.insufficientStorage }
+  }
+
   func copyPayloads(
     _ payloads: [BackupPayload],
     package: URL,
     identityMap: RestoreIdentityMap,
-    progress: AsyncStream<Double>.Continuation
-  ) throws {
+    progress: AsyncStream<Double>.Continuation,
+    afterCopy: @Sendable (Int) async -> Void
+  ) async throws {
     for (index, payload) in payloads.enumerated() {
       try Task.checkCancellation()
       let source = package.appending(path: "Payload").appending(path: payload.relativePath)
@@ -68,6 +107,8 @@ private actor RestorePackageWorker {
         for: BackupFileUtilities.canonicalPayloadRelativePath(payload.relativePath),
         identityMap: identityMap)
       try BackupFileUtilities.copyFile(from: source, to: destination)
+      await afterCopy(index + 1)
+      try Task.checkCancellation()
       progress.yield(Double(index + 1) / Double(max(payloads.count + 1, 1)))
     }
   }
@@ -159,6 +200,15 @@ private actor RestorePackageWorker {
 @MainActor
 struct RestoreService {
   let drawingRepository: DrawingRepository
+  private let afterPayloadCopy: @Sendable (Int) async -> Void
+
+  init(
+    drawingRepository: DrawingRepository,
+    afterPayloadCopy: @escaping @Sendable (Int) async -> Void = { _ in }
+  ) {
+    self.drawingRepository = drawingRepository
+    self.afterPayloadCopy = afterPayloadCopy
+  }
 
   func restore(
     from source: URL,
@@ -192,7 +242,8 @@ struct RestoreService {
         manifest.payloads,
         package: package.staging,
         identityMap: identityMap,
-        progress: continuation)
+        progress: continuation,
+        afterCopy: afterPayloadCopy)
       try Task.checkCancellation()
       let result = try publish(
         library: manifest.library,

@@ -31,6 +31,18 @@ nonisolated struct BackupLibrary: Codable, Sendable {
   let pages: [BackupPageRecord]
   let importedDocuments: [BackupDocumentRecord]
 
+  init(
+    folders: [BackupFolderRecord],
+    notes: [BackupNoteRecord],
+    pages: [BackupPageRecord],
+    importedDocuments: [BackupDocumentRecord]
+  ) {
+    self.folders = folders
+    self.notes = notes
+    self.pages = pages
+    self.importedDocuments = importedDocuments
+  }
+
   @MainActor init(
     folders: [Folder],
     notes: [Note],
@@ -106,6 +118,28 @@ nonisolated struct BackupPageRecord: Codable, Sendable {
   let workspaceElementsData: Data?
   let importedDocumentID: UUID?
   let importedDocumentPageIndex: Int?
+
+  init(
+    id: UUID,
+    noteID: UUID,
+    sortOrder: Int,
+    contentRevision: Int64,
+    createdAt: Date,
+    updatedAt: Date,
+    workspaceElementsData: Data?,
+    importedDocumentID: UUID?,
+    importedDocumentPageIndex: Int?
+  ) {
+    self.id = id
+    self.noteID = noteID
+    self.sortOrder = sortOrder
+    self.contentRevision = contentRevision
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.workspaceElementsData = workspaceElementsData
+    self.importedDocumentID = importedDocumentID
+    self.importedDocumentPageIndex = importedDocumentPageIndex
+  }
 
   @MainActor init(_ page: Page) {
     id = page.id

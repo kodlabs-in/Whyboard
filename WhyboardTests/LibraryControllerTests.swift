@@ -6,6 +6,25 @@ import Testing
 
 @MainActor
 struct LibraryControllerTests {
+  @Test func failedNoteCreationReturnsNoIdentityAndRollsBackInsertedModels() throws {
+    let container = try makeContainer()
+    let context = container.mainContext
+    let unfiled = Folder(name: "Unfiled Notes", isSystem: true)
+    context.insert(unfiled)
+    try context.save()
+    let controller = LibraryController(saveAction: { _ in throw LibrarySaveFailure() })
+
+    let createdNoteID = controller.createNote(
+      in: .root,
+      folders: [unfiled],
+      context: context)
+
+    #expect(createdNoteID == nil)
+    #expect(try context.fetchCount(FetchDescriptor<Note>()) == 0)
+    #expect(try context.fetchCount(FetchDescriptor<Page>()) == 0)
+    #expect(controller.errorMessage == "Injected library save failure")
+  }
+
   @Test func rootNoteCreationUsesUnfiledAndStartsWithOnePage() throws {
     let container = try makeContainer()
     let context = container.mainContext
@@ -80,6 +99,21 @@ struct LibraryControllerTests {
       ])
   }
 
+  @Test func selectAllDuringSearchContainsOnlyVisibleMatchingNotes() {
+    let folder = Folder(name: "Hidden during search")
+    let matchingNote = Note(folderID: folder.id, title: "Calculus")
+    let unrelatedNote = Note(folderID: folder.id, title: "Physics")
+
+    let visible = LibraryVisibleContent(
+      searchText: "CALCULUS",
+      folders: [folder],
+      notes: [matchingNote, unrelatedNote])
+
+    #expect(visible.folders.isEmpty)
+    #expect(visible.notes.map(\.id) == [matchingNote.id])
+    #expect(visible.selectionItems == [.note(matchingNote.id)])
+  }
+
   @Test func browserShowsOnlyDirectFoldersAndNotes() {
     let rootStorage = Folder(name: "Unfiled Notes", isSystem: true)
     let mathematics = Folder(name: "Mathematics")
@@ -141,4 +175,8 @@ struct LibraryControllerTests {
     let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     return try ModelContainer(for: schema, configurations: [configuration])
   }
+}
+
+private struct LibrarySaveFailure: LocalizedError {
+  var errorDescription: String? { "Injected library save failure" }
 }

@@ -124,6 +124,29 @@ struct PDFPortabilityTests {
     #expect(previewFiles.isEmpty)
   }
 
+  @Test func PDFAboveSupportedPageLimitPublishesNothing() async throws {
+    let container = try makeContainer()
+    let context = container.mainContext
+    let directories = try AppDirectories.makeForTesting()
+    defer { try? FileManager.default.removeItem(at: directories.root) }
+    let repository = DrawingRepository(directories: directories)
+    let source = directories.root.appending(path: "Too-Many-Pages.pdf")
+    try makePDF(at: source, pageCount: ResourceLimits.maximumPDFPages + 1)
+
+    await #expect(throws: DocumentStorageError.self) {
+      try await PDFImportService(drawingRepository: repository)
+        .importPDF(
+          at: source,
+          folderID: UUID(),
+          existingNotes: [],
+          context: context)
+    }
+
+    #expect(try context.fetchCount(FetchDescriptor<Note>()) == 0)
+    #expect(try context.fetchCount(FetchDescriptor<Page>()) == 0)
+    #expect(try context.fetchCount(FetchDescriptor<ImportedDocument>()) == 0)
+  }
+
   @Test func cancelledImportPublishesNoNoteOrPayload() async throws {
     let container = try makeContainer()
     let context = container.mainContext

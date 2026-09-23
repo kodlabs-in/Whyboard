@@ -61,7 +61,7 @@ extension LibraryView {
         let result = try await PDFExportService(drawingRepository: drawingRepository)
           .export(
             note: note,
-            pages: pages,
+            pages: fetchPages(noteIDs: [note.id]),
             defaultPaperStyle: defaultStyle,
             onProgress: updateDocumentProgress)
         finishDocumentOperation(announcement: "PDF export complete")

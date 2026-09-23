@@ -71,11 +71,13 @@ actor PreviewRepository {
     noteID: UUID,
     revision: Int64
   ) throws {
+    try Task.checkCancellation()
     let key = PreviewKey(noteID: noteID, pageID: pageID)
     let resolvedPaperStyle = resolvedPaperStyle(paperStyle)
     guard revision >= newestStoredRevision[key, default: -1] else { return }
     let noteDirectory = notePreviewDirectory(noteID: noteID)
     try createDirectory(noteDirectory)
+    try Task.checkCancellation()
     let image = renderer.render(
       PagePreviewSnapshot(
         drawing: drawing,
@@ -85,7 +87,9 @@ actor PreviewRepository {
         background: background),
       noteID: noteID,
       pageID: pageID)
+    try Task.checkCancellation()
     let data = try encodedPreview(for: image)
+    try Task.checkCancellation()
     let destination = previewURL(
       pageID: pageID,
       noteID: noteID,
@@ -93,7 +97,9 @@ actor PreviewRepository {
       paperStyle: resolvedPaperStyle)
 
     do {
+      try Task.checkCancellation()
       try data.write(to: destination, options: [.atomic, .completeFileProtection])
+      try Task.checkCancellation()
       newestStoredRevision[key] = revision
       removeCachedImages(for: key)
       cache(
@@ -108,6 +114,9 @@ actor PreviewRepository {
         pageID: pageID,
         keeping: destination,
         noteDirectory: noteDirectory)
+    } catch is CancellationError {
+      try? fileManager.removeItem(at: destination)
+      throw CancellationError()
     } catch {
       throw PreviewStorageError.writeFailed
     }

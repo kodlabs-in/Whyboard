@@ -136,6 +136,27 @@ struct PersistenceTests {
     #expect(try await repository.load(pageID: pageID, noteID: noteID) == drawing)
   }
 
+  @Test func cancelledPreviewWorkDoesNotPublishARevision() async throws {
+    let directories = try AppDirectories.makeForTesting()
+    defer { try? FileManager.default.removeItem(at: directories.root) }
+    let repository = DrawingRepository(directories: directories)
+    let noteID = UUID()
+    let pageID = UUID()
+    let task = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      try await repository.previews.store(
+        drawing: PKDrawing(),
+        pageID: pageID,
+        noteID: noteID,
+        revision: 1)
+    }
+
+    await #expect(throws: CancellationError.self) {
+      try await task.value
+    }
+    #expect(await repository.previews.preview(pageID: pageID, noteID: noteID, revision: 1) == nil)
+  }
+
   @Test func previewCacheSeparatesPaperStylesAtTheSameRevision() async throws {
     let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }

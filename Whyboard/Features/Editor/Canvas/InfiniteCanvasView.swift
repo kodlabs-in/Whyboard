@@ -5,15 +5,18 @@ import UIKit
 struct InfiniteCanvasView: UIViewRepresentable {
   let drawing: PKDrawing
   let drawsWithFinger: Bool
+  let isDrawingEnabled: Bool
   let canvasController: InfiniteCanvasController
   let toolPickerController: ToolPickerController
   let onDrawingChanged: (PKDrawing) -> Void
+  let onDrawingChangeCommitted: (PKDrawing, PKDrawing) -> Void
 
   func makeCoordinator() -> Coordinator {
     Coordinator(
       canvasController: canvasController,
       toolPickerController: toolPickerController,
-      onDrawingChanged: onDrawingChanged)
+      onDrawingChanged: onDrawingChanged,
+      onDrawingChangeCommitted: onDrawingChangeCommitted)
   }
 
   func makeUIView(context: Context) -> InfiniteCanvasHostView {
@@ -30,10 +33,13 @@ struct InfiniteCanvasView: UIViewRepresentable {
   }
 
   func updateUIView(_ hostView: InfiniteCanvasHostView, context: Context) {
-    context.coordinator.update(onDrawingChanged: onDrawingChanged)
+    context.coordinator.update(
+      onDrawingChanged: onDrawingChanged,
+      onDrawingChangeCommitted: onDrawingChangeCommitted)
     let canvasView = hostView.canvasView
     canvasView.backgroundColor = .clear
     canvasView.drawingPolicy = drawsWithFinger ? .anyInput : .pencilOnly
+    canvasView.drawingGestureRecognizer.isEnabled = isDrawingEnabled
   }
 
   static func dismantleUIView(_ hostView: InfiniteCanvasHostView, coordinator: Coordinator) {
@@ -45,6 +51,7 @@ struct InfiniteCanvasView: UIViewRepresentable {
     canvasView.backgroundColor = .clear
     canvasView.isOpaque = false
     canvasView.drawingPolicy = drawsWithFinger ? .anyInput : .pencilOnly
+    canvasView.drawingGestureRecognizer.isEnabled = isDrawingEnabled
     canvasView.contentSize = InfiniteCanvasMetrics.contentSize
     canvasView.minimumZoomScale = InfiniteCanvasMetrics.minimumZoomScale
     canvasView.maximumZoomScale = InfiniteCanvasMetrics.maximumZoomScale
@@ -60,25 +67,35 @@ struct InfiniteCanvasView: UIViewRepresentable {
     private let canvasController: InfiniteCanvasController
     private let toolPickerController: ToolPickerController
     private var onDrawingChanged: (PKDrawing) -> Void
+    private var onDrawingChangeCommitted: (PKDrawing, PKDrawing) -> Void
     private var isApplyingDrawing = false
+    private var lastDrawing = PKDrawing()
+    private var drawingAtStrokeStart: PKDrawing?
 
     init(
       canvasController: InfiniteCanvasController,
       toolPickerController: ToolPickerController,
-      onDrawingChanged: @escaping (PKDrawing) -> Void
+      onDrawingChanged: @escaping (PKDrawing) -> Void,
+      onDrawingChangeCommitted: @escaping (PKDrawing, PKDrawing) -> Void
     ) {
       self.canvasController = canvasController
       self.toolPickerController = toolPickerController
       self.onDrawingChanged = onDrawingChanged
+      self.onDrawingChangeCommitted = onDrawingChangeCommitted
     }
 
-    func update(onDrawingChanged: @escaping (PKDrawing) -> Void) {
+    func update(
+      onDrawingChanged: @escaping (PKDrawing) -> Void,
+      onDrawingChangeCommitted: @escaping (PKDrawing, PKDrawing) -> Void
+    ) {
       self.onDrawingChanged = onDrawingChanged
+      self.onDrawingChangeCommitted = onDrawingChangeCommitted
     }
 
     func apply(_ drawing: PKDrawing, to canvasView: PKCanvasView) {
       isApplyingDrawing = true
       canvasView.drawing = drawing
+      lastDrawing = drawing
       isApplyingDrawing = false
     }
 
@@ -95,12 +112,23 @@ struct InfiniteCanvasView: UIViewRepresentable {
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
       guard !isApplyingDrawing else { return }
-      onDrawingChanged(canvasView.drawing)
+      let currentDrawing = canvasView.drawing
+      lastDrawing = currentDrawing
+      onDrawingChanged(currentDrawing)
       toolPickerController.drawingDidChange(on: canvasView)
     }
 
     func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
+      drawingAtStrokeStart = lastDrawing
       toolPickerController.focus(canvasView)
+    }
+
+    func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
+      guard let previousDrawing = drawingAtStrokeStart else { return }
+      drawingAtStrokeStart = nil
+      let currentDrawing = canvasView.drawing
+      guard previousDrawing != currentDrawing else { return }
+      onDrawingChangeCommitted(previousDrawing, currentDrawing)
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
@@ -136,6 +164,7 @@ struct InfiniteCanvasView: UIViewRepresentable {
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
       canvasController.persistCurrentViewport()
     }
+
   }
 }
 
