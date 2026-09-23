@@ -163,7 +163,6 @@ struct NoteEditorView: View {
       pageNumber: index + 1,
       pageCount: orderedPages.count,
       isLive: controller.livePageIDs.contains(page.id),
-      isActive: controller.activePageID == page.id,
       paperStyle: resolvedPaperStyle,
       drawsWithFinger: drawsWithFinger,
       interactionMode: elementEditingController.interactionMode,

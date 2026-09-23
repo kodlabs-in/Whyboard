@@ -15,6 +15,8 @@ final class PageSession {
   let page: Page
   let undoHistory: EditorUndoHistory
   private(set) var drawing = PKDrawing()
+  private(set) var drawingRevision = 0
+  private var committedDrawingData = PKDrawing().dataRepresentation()
   private(set) var state = PageSaveState.loading {
     didSet { onStateChange() }
   }
@@ -58,6 +60,7 @@ final class PageSession {
 
     do {
       drawing = try await drawingRepository.load(pageID: page.id, noteID: note.id)
+      committedDrawingData = drawing.dataRepresentation()
       hasLoaded = true
       state = .clean
     } catch {
@@ -65,26 +68,29 @@ final class PageSession {
     }
   }
 
-  func drawingDidChange(_ drawing: PKDrawing) {
-    guard hasLoaded, !isCancelled else { return }
-    self.drawing = drawing
-    changeSequence += 1
-    state = .dirty
-    scheduleSave()
-  }
-
-  func recordDrawingChange(from previousDrawing: PKDrawing, to currentDrawing: PKDrawing) {
-    guard previousDrawing != currentDrawing else { return }
+  func recordDrawingChange(to currentDrawing: PKDrawing, on canvasView: PKCanvasView? = nil) {
+    let previousData = committedDrawingData
+    let currentData = currentDrawing.dataRepresentation()
+    committedDrawingData = currentData
+    guard previousData != currentData else { return }
     undoHistory.record(
       scope: page.id,
-      estimatedByteCost: estimatedByteCost(previousDrawing, currentDrawing),
-      undo: { [weak self] in
+      estimatedByteCost: combinedByteCount(previousData.count, currentData.count),
+      undo: { [weak self, weak canvasView] in
         guard let self else { return false }
-        return await applyHistoryDrawing(previousDrawing)
+        return await applyHistoryDrawing(
+          previousData,
+          replacing: currentData,
+          on: canvasView,
+          undoing: true)
       },
-      redo: { [weak self] in
+      redo: { [weak self, weak canvasView] in
         guard let self else { return false }
-        return await applyHistoryDrawing(currentDrawing)
+        return await applyHistoryDrawing(
+          currentData,
+          replacing: previousData,
+          on: canvasView,
+          undoing: false)
       })
   }
 
@@ -113,14 +119,47 @@ final class PageSession {
     previewTask?.cancel()
   }
 
-  private func applyHistoryDrawing(_ targetDrawing: PKDrawing) async -> Bool {
+  private func applyHistoryDrawing(
+    _ targetData: Data,
+    replacing expectedData: Data,
+    on canvasView: PKCanvasView?,
+    undoing: Bool
+  ) async -> Bool {
+    if let canvasView, canvasView.window != nil {
+      if canvasView.drawing.dataRepresentation() == expectedData {
+        if let manager = canvasView.undoManager {
+          if undoing ? manager.canUndo : manager.canRedo {
+            if undoing { manager.undo() } else { manager.redo() }
+          }
+          if canvasView.drawing.dataRepresentation() == targetData {
+            drawingDidChange(canvasView.drawing)
+            committedDrawingData = targetData
+            return true
+          }
+        }
+      }
+    }
+
+    // Restore the snapshot when the canvas or its native undo action is unavailable.
+    guard let targetDrawing = try? PKDrawing(data: targetData) else { return false }
+    let didRestore = await restoreHistoryDrawing(targetDrawing)
+    if didRestore, let canvasView, canvasView.window != nil {
+      canvasView.undoManager?.removeAllActions()
+    }
+    return didRestore
+  }
+
+  private func restoreHistoryDrawing(_ targetDrawing: PKDrawing) async -> Bool {
     guard hasLoaded, !isCancelled else { return false }
     guard await flush() else { return false }
 
     let previousDrawing = drawing
+    let previousData = committedDrawingData
     let previousChangeSequence = changeSequence
     let previousPersistedSequence = persistedSequence
     drawing = targetDrawing
+    committedDrawingData = targetDrawing.dataRepresentation()
+    drawingRevision += 1
     changeSequence += 1
     state = .dirty
 
@@ -128,6 +167,8 @@ final class PageSession {
 
     let failedState = state
     drawing = previousDrawing
+    committedDrawingData = previousData
+    drawingRevision += 1
     do {
       try await drawingRepository.save(
         previousDrawing,
@@ -245,9 +286,21 @@ final class PageSession {
     }
   }
 
-  private func estimatedByteCost(_ first: PKDrawing, _ second: PKDrawing) -> Int {
-    let (sum, overflow) = first.dataRepresentation().count.addingReportingOverflow(
-      second.dataRepresentation().count)
+}
+
+extension PageSession {
+  func drawingDidChange(_ drawing: PKDrawing) {
+    guard hasLoaded, !isCancelled else { return }
+    self.drawing = drawing
+    changeSequence += 1
+    state = .dirty
+    scheduleSave()
+  }
+}
+
+private extension PageSession {
+  func combinedByteCount(_ first: Int, _ second: Int) -> Int {
+    let (sum, overflow) = first.addingReportingOverflow(second)
     return overflow ? .max : sum
   }
 }

@@ -1,3 +1,4 @@
+import PencilKit
 import SwiftUI
 import UIKit
 
@@ -6,7 +7,6 @@ struct PagePaperView: View {
   let pageNumber: Int
   let pageCount: Int
   let isLive: Bool
-  let isActive: Bool
   let paperStyle: NotePaperStyle
   let drawsWithFinger: Bool
   let interactionMode: WorkspaceInteractionMode
@@ -114,14 +114,18 @@ struct PagePaperView: View {
 
         CanonicalCanvasView(
           drawing: session.drawing,
+          drawingRevision: session.drawingRevision,
           drawsWithFinger: drawsWithFinger,
-          isActive: isActive,
           toolPickerController: toolPickerController,
           onDrawingChanged: session.drawingDidChange,
           onDrawingChangeCommitted: session.recordDrawingChange,
           onFocused: onFocus
         )
         .allowsHitTesting(interactionMode == .draw)
+        .accessibilityIdentifier("page-canvas")
+        .accessibilityValue(
+          session.drawing.strokes.count == 1
+            ? "1 stroke" : "\(session.drawing.strokes.count) strokes")
 
         if interactionMode == .arrange {
           WorkspaceElementInteractionLayer(

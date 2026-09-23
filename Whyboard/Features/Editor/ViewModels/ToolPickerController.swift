@@ -5,15 +5,18 @@ import PencilKit
 @Observable
 final class ToolPickerController {
   let toolPicker: PKToolPicker
-  private(set) var canUndo = false
-  private(set) var canRedo = false
-
   @ObservationIgnored private let canvases = NSHashTable<PKCanvasView>.weakObjects()
   @ObservationIgnored private weak var activeCanvasView: PKCanvasView?
 
   init() {
     toolPicker = PKToolPicker()
-    toolPicker.stateAutosaveName = "Whyboard.ToolPicker"
+    if ProcessInfo.processInfo.environment["WHYBOARD_UI_TEST_DRAW_WITH_FINGER"] == "1" {
+      if let inkItem = toolPicker.toolItems.first(where: { $0 is PKToolPickerInkingItem }) {
+        toolPicker.selectedToolItem = inkItem
+      }
+    } else {
+      toolPicker.stateAutosaveName = "Whyboard.ToolPicker"
+    }
   }
 
   func register(_ canvasView: PKCanvasView) {
@@ -28,7 +31,6 @@ final class ToolPickerController {
     activeCanvasView = canvasView
     toolPicker.setVisible(true, forFirstResponder: canvasView)
     canvasView.becomeFirstResponder()
-    refreshUndoState()
   }
 
   func unregister(_ canvasView: PKCanvasView) {
@@ -39,28 +41,6 @@ final class ToolPickerController {
 
     if let replacement = canvases.allObjects.first {
       focus(replacement)
-    } else {
-      refreshUndoState()
     }
-  }
-
-  func drawingDidChange(on canvasView: PKCanvasView) {
-    guard activeCanvasView === canvasView else { return }
-    refreshUndoState()
-  }
-
-  func undo() {
-    activeCanvasView?.undoManager?.undo()
-    refreshUndoState()
-  }
-
-  func redo() {
-    activeCanvasView?.undoManager?.redo()
-    refreshUndoState()
-  }
-
-  private func refreshUndoState() {
-    canUndo = activeCanvasView?.undoManager?.canUndo == true
-    canRedo = activeCanvasView?.undoManager?.canRedo == true
   }
 }

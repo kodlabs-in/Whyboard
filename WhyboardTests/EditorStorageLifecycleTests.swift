@@ -102,12 +102,12 @@ struct EditorStorageLifecycleTests {
       saveMetadata: {},
       onStateChange: {})
     await session.loadIfNeeded()
-    let blankDrawing = session.drawing
     let inkDrawing = makeInkDrawing()
     session.drawingDidChange(inkDrawing)
-    session.recordDrawingChange(from: blankDrawing, to: inkDrawing)
+    session.recordDrawingChange(to: inkDrawing)
 
     #expect(await history.undo())
+    #expect(session.drawingRevision == 1)
     let reopenedAfterUndo = PageSession(
       page: page,
       note: note,
@@ -119,6 +119,7 @@ struct EditorStorageLifecycleTests {
     #expect(reopenedAfterUndo.drawing.strokes.isEmpty)
 
     #expect(await history.redo())
+    #expect(session.drawingRevision == 2)
     let reopenedAfterRedo = PageSession(
       page: page,
       note: note,
@@ -128,6 +129,58 @@ struct EditorStorageLifecycleTests {
       onStateChange: {})
     await reopenedAfterRedo.loadIfNeeded()
     #expect(reopenedAfterRedo.drawing.strokes.count == 1)
+  }
+
+  @Test func liveEraserUndoUsesTheCanvasUndoManager() async throws {
+    let directories = try AppDirectories.makeForTesting()
+    defer { try? FileManager.default.removeItem(at: directories.root) }
+    let note = Note(folderID: UUID())
+    let page = Page(noteID: note.id, sortOrder: 0)
+    let repository = DrawingRepository(directories: directories)
+    let history = EditorUndoHistory()
+    let session = PageSession(
+      page: page,
+      note: note,
+      drawingRepository: repository,
+      undoHistory: history,
+      generatesPreview: false,
+      saveMetadata: {},
+      onStateChange: {})
+    await session.loadIfNeeded()
+
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
+    let viewController = UIViewController()
+    window.rootViewController = viewController
+    let canvasView = PKCanvasView(frame: viewController.view.bounds)
+    viewController.view.addSubview(canvasView)
+    window.makeKeyAndVisible()
+    defer { window.isHidden = true }
+
+    let manager = try #require(canvasView.undoManager)
+    let inkDrawing = makeInkDrawing()
+    let erasedDrawing = PKDrawing()
+    session.drawingDidChange(inkDrawing)
+    session.recordDrawingChange(to: inkDrawing)
+    canvasView.drawing = erasedDrawing
+    session.drawingDidChange(erasedDrawing)
+    manager.removeAllActions()
+    manager.registerUndo(withTarget: canvasView) { canvas in
+      canvas.drawing = inkDrawing
+      manager.registerUndo(withTarget: canvas) { canvas in
+        canvas.drawing = erasedDrawing
+      }
+    }
+    session.recordDrawingChange(to: erasedDrawing, on: canvasView)
+
+    #expect(await history.undo())
+    #expect(canvasView.drawing == inkDrawing)
+    #expect(session.drawing == inkDrawing)
+    #expect(session.drawingRevision == 0)
+    #expect(manager.canRedo)
+    #expect(await history.redo())
+    #expect(canvasView.drawing == erasedDrawing)
+    #expect(session.drawing == erasedDrawing)
+    #expect(manager.canUndo)
   }
 
   @Test func failedInkUndoRemainsAvailableAndKeepsTheCurrentDrawing() async throws {
@@ -149,10 +202,9 @@ struct EditorStorageLifecycleTests {
       },
       onStateChange: {})
     await session.loadIfNeeded()
-    let blankDrawing = session.drawing
     let inkDrawing = makeInkDrawing()
     session.drawingDidChange(inkDrawing)
-    session.recordDrawingChange(from: blankDrawing, to: inkDrawing)
+    session.recordDrawingChange(to: inkDrawing)
     #expect(await session.flush())
     metadataCanSave = false
 

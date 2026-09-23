@@ -290,6 +290,7 @@ private struct InfiniteCanvasSurface: View {
 
       InfiniteCanvasView(
         drawing: session.drawing,
+        drawingRevision: session.drawingRevision,
         drawsWithFinger: drawsWithFinger,
         isDrawingEnabled: interactionMode == .draw,
         canvasController: canvasController,

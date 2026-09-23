@@ -4,11 +4,11 @@ import UIKit
 
 struct CanonicalCanvasView: UIViewRepresentable {
   let drawing: PKDrawing
+  let drawingRevision: Int
   let drawsWithFinger: Bool
-  let isActive: Bool
   let toolPickerController: ToolPickerController
   let onDrawingChanged: (PKDrawing) -> Void
-  let onDrawingChangeCommitted: (PKDrawing, PKDrawing) -> Void
+  let onDrawingChangeCommitted: (PKDrawing, PKCanvasView) -> Void
   let onFocused: () -> Void
 
   func makeCoordinator() -> Coordinator {
@@ -22,13 +22,12 @@ struct CanonicalCanvasView: UIViewRepresentable {
   func makeUIView(context: Context) -> CanonicalCanvasHostView {
     let hostView = CanonicalCanvasHostView()
     let canvasView = hostView.canvasView
-    context.coordinator.apply(drawing, to: canvasView)
+    context.coordinator.apply(drawing, revision: drawingRevision, to: canvasView)
     canvasView.delegate = context.coordinator
     canvasView.drawingPolicy = drawsWithFinger ? .anyInput : .pencilOnly
     hostView.onAttachedToWindow = { [weak canvasView, weak coordinator = context.coordinator] in
       guard let canvasView, let coordinator else { return }
       coordinator.register(canvasView)
-      coordinator.setActive(isActive, canvasView: canvasView)
     }
     return hostView
   }
@@ -39,10 +38,9 @@ struct CanonicalCanvasView: UIViewRepresentable {
       onDrawingChangeCommitted: onDrawingChangeCommitted,
       onFocused: onFocused)
     hostView.canvasView.drawingPolicy = drawsWithFinger ? .anyInput : .pencilOnly
-    context.coordinator.setActive(isActive, canvasView: hostView.canvasView)
 
-    if hostView.canvasView.drawing != drawing {
-      context.coordinator.apply(drawing, to: hostView.canvasView)
+    if context.coordinator.appliedDrawingRevision != drawingRevision {
+      context.coordinator.apply(drawing, revision: drawingRevision, to: hostView.canvasView)
     }
   }
 
@@ -54,17 +52,15 @@ struct CanonicalCanvasView: UIViewRepresentable {
   final class Coordinator: NSObject, PKCanvasViewDelegate {
     private let toolPickerController: ToolPickerController
     private var onDrawingChanged: (PKDrawing) -> Void
-    private var onDrawingChangeCommitted: (PKDrawing, PKDrawing) -> Void
+    private var onDrawingChangeCommitted: (PKDrawing, PKCanvasView) -> Void
     private var onFocused: () -> Void
     private var isApplyingDrawing = false
-    private var isActive = false
-    private var lastDrawing = PKDrawing()
-    private var drawingAtStrokeStart: PKDrawing?
+    private(set) var appliedDrawingRevision = 0
 
     init(
       toolPickerController: ToolPickerController,
       onDrawingChanged: @escaping (PKDrawing) -> Void,
-      onDrawingChangeCommitted: @escaping (PKDrawing, PKDrawing) -> Void,
+      onDrawingChangeCommitted: @escaping (PKDrawing, PKCanvasView) -> Void,
       onFocused: @escaping () -> Void
     ) {
       self.toolPickerController = toolPickerController
@@ -75,7 +71,7 @@ struct CanonicalCanvasView: UIViewRepresentable {
 
     func updateCallbacks(
       onDrawingChanged: @escaping (PKDrawing) -> Void,
-      onDrawingChangeCommitted: @escaping (PKDrawing, PKDrawing) -> Void,
+      onDrawingChangeCommitted: @escaping (PKDrawing, PKCanvasView) -> Void,
       onFocused: @escaping () -> Void
     ) {
       self.onDrawingChanged = onDrawingChanged
@@ -83,10 +79,10 @@ struct CanonicalCanvasView: UIViewRepresentable {
       self.onFocused = onFocused
     }
 
-    func apply(_ drawing: PKDrawing, to canvasView: PKCanvasView) {
+    func apply(_ drawing: PKDrawing, revision: Int, to canvasView: PKCanvasView) {
       isApplyingDrawing = true
       canvasView.drawing = drawing
-      lastDrawing = drawing
+      appliedDrawingRevision = revision
       isApplyingDrawing = false
     }
 
@@ -98,36 +94,23 @@ struct CanonicalCanvasView: UIViewRepresentable {
       toolPickerController.unregister(canvasView)
     }
 
-    func setActive(_ isActive: Bool, canvasView: PKCanvasView) {
-      guard isActive else {
-        self.isActive = false
-        return
-      }
-      guard canvasView.window != nil, !self.isActive else { return }
-      self.isActive = true
-      toolPickerController.focus(canvasView)
-    }
-
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
       guard !isApplyingDrawing else { return }
-      let currentDrawing = canvasView.drawing
-      lastDrawing = currentDrawing
-      onDrawingChanged(currentDrawing)
-      toolPickerController.drawingDidChange(on: canvasView)
+      onDrawingChanged(canvasView.drawing)
     }
 
     func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
-      drawingAtStrokeStart = lastDrawing
       onFocused()
       toolPickerController.focus(canvasView)
     }
 
     func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
-      guard let previousDrawing = drawingAtStrokeStart else { return }
-      drawingAtStrokeStart = nil
-      let currentDrawing = canvasView.drawing
-      guard previousDrawing != currentDrawing else { return }
-      onDrawingChangeCommitted(previousDrawing, currentDrawing)
+      DispatchQueue.main.asyncAfter(
+        deadline: .now() + .milliseconds(30),
+        execute: { [weak self, weak canvasView] in
+          guard let self, let canvasView else { return }
+          self.onDrawingChangeCommitted(canvasView.drawing, canvasView)
+        })
     }
   }
 }

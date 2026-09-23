@@ -119,8 +119,10 @@ final class EditorUndoHistory {
 
   private func trimUndoStackToBudget() -> Set<UUID> {
     var discardedScopes: Set<UUID> = []
-    while undoStack.count > limit || estimatedByteCost(of: undoStack) > byteLimit {
-      guard !undoStack.isEmpty else { return discardedScopes }
+    while undoStack.count > limit {
+      discardedScopes.insert(undoStack.removeFirst().scope)
+    }
+    while undoStack.count > 1 && estimatedByteCost(of: undoStack) > byteLimit {
       discardedScopes.insert(undoStack.removeFirst().scope)
     }
     return discardedScopes

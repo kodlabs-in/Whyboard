@@ -131,4 +131,24 @@ struct EditorUndoHistoryTests {
     #expect(!history.canUndo)
   }
 
+  @Test func anOversizedLatestChangeCanStillBeUndone() async {
+    let history = EditorUndoHistory(byteLimit: 1)
+    var value = 1
+    history.record(
+      scope: UUID(),
+      estimatedByteCost: 2,
+      undo: {
+        value = 0
+        return true
+      },
+      redo: {
+        value = 1
+        return true
+      })
+
+    #expect(history.canUndo)
+    #expect(await history.undo())
+    #expect(value == 0)
+  }
+
 }
