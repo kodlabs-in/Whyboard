@@ -119,6 +119,14 @@ final class EditorReliabilityUITests: XCTestCase {
       let strokeLabel = restored == 1 ? "1 stroke" : "\(restored) strokes"
       XCTAssertEqual(canvas.value as? String, strokeLabel)
     }
+
+    undo.tap()
+    XCTAssertEqual(canvas.value as? String, "2 strokes")
+    let replacementStart = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45))
+    let replacementEnd = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.55))
+    replacementStart.press(forDuration: 0.05, thenDragTo: replacementEnd)
+    XCTAssertEqual(canvas.value as? String, "3 strokes")
+    XCTAssertFalse(redo.isEnabled)
   }
 
   @MainActor
@@ -149,6 +157,11 @@ final class EditorReliabilityUITests: XCTestCase {
       "A completed page drawing gesture should enable Undo")
     undo.tap()
     XCTAssertEqual(canvas.value as? String, "0 strokes")
+
+    let replacementStart = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.45))
+    let replacementEnd = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.55))
+    replacementStart.press(forDuration: 0.05, thenDragTo: replacementEnd)
+    XCTAssertEqual(canvas.value as? String, "1 stroke")
   }
 
   @MainActor

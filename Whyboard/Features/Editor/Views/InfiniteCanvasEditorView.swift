@@ -296,7 +296,9 @@ private struct InfiniteCanvasSurface: View {
         canvasController: canvasController,
         toolPickerController: toolPickerController,
         onDrawingChanged: session.drawingDidChange,
-        onDrawingChangeCommitted: session.recordDrawingChange)
+        onDrawingChangeCommitted: session.recordDrawingChange
+      )
+      .id(session.drawingRevision)
 
       if interactionMode == .arrange {
         WorkspaceElementInteractionLayer(

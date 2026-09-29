@@ -78,19 +78,11 @@ final class PageSession {
       estimatedByteCost: combinedByteCount(previousData.count, currentData.count),
       undo: { [weak self, weak canvasView] in
         guard let self else { return false }
-        return await applyHistoryDrawing(
-          previousData,
-          replacing: currentData,
-          on: canvasView,
-          undoing: true)
+        return await applyHistoryDrawing(previousData, on: canvasView)
       },
       redo: { [weak self, weak canvasView] in
         guard let self else { return false }
-        return await applyHistoryDrawing(
-          currentData,
-          replacing: previousData,
-          on: canvasView,
-          undoing: false)
+        return await applyHistoryDrawing(currentData, on: canvasView)
       })
   }
 
@@ -121,30 +113,16 @@ final class PageSession {
 
   private func applyHistoryDrawing(
     _ targetData: Data,
-    replacing expectedData: Data,
-    on canvasView: PKCanvasView?,
-    undoing: Bool
+    on canvasView: PKCanvasView?
   ) async -> Bool {
-    if let canvasView, canvasView.window != nil {
-      if canvasView.drawing.dataRepresentation() == expectedData {
-        if let manager = canvasView.undoManager {
-          if undoing ? manager.canUndo : manager.canRedo {
-            if undoing { manager.undo() } else { manager.redo() }
-          }
-          if canvasView.drawing.dataRepresentation() == targetData {
-            drawingDidChange(canvasView.drawing)
-            committedDrawingData = targetData
-            return true
-          }
-        }
-      }
-    }
-
-    // Restore the snapshot when the canvas or its native undo action is unavailable.
     guard let targetDrawing = try? PKDrawing(data: targetData) else { return false }
     let didRestore = await restoreHistoryDrawing(targetDrawing)
     if didRestore, let canvasView, canvasView.window != nil {
+      let delegate = canvasView.delegate
+      canvasView.delegate = nil
+      canvasView.drawing = targetDrawing
       canvasView.undoManager?.removeAllActions()
+      canvasView.delegate = delegate
     }
     return didRestore
   }

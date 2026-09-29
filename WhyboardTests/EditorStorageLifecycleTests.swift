@@ -131,7 +131,7 @@ struct EditorStorageLifecycleTests {
     #expect(reopenedAfterRedo.drawing.strokes.count == 1)
   }
 
-  @Test func liveEraserUndoUsesTheCanvasUndoManager() async throws {
+  @Test func liveEraserUndoRestoresTheCanvasSnapshot() async throws {
     let directories = try AppDirectories.makeForTesting()
     defer { try? FileManager.default.removeItem(at: directories.root) }
     let note = Note(folderID: UUID())
@@ -175,12 +175,13 @@ struct EditorStorageLifecycleTests {
     #expect(await history.undo())
     #expect(canvasView.drawing == inkDrawing)
     #expect(session.drawing == inkDrawing)
-    #expect(session.drawingRevision == 0)
-    #expect(manager.canRedo)
+    #expect(session.drawingRevision == 1)
+    #expect(!manager.canRedo)
     #expect(await history.redo())
     #expect(canvasView.drawing == erasedDrawing)
     #expect(session.drawing == erasedDrawing)
-    #expect(manager.canUndo)
+    #expect(session.drawingRevision == 2)
+    #expect(!manager.canUndo)
   }
 
   @Test func failedInkUndoRemainsAvailableAndKeepsTheCurrentDrawing() async throws {

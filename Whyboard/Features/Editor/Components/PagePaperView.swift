@@ -121,6 +121,7 @@ struct PagePaperView: View {
           onDrawingChangeCommitted: session.recordDrawingChange,
           onFocused: onFocus
         )
+        .id(session.drawingRevision)
         .allowsHitTesting(interactionMode == .draw)
         .accessibilityIdentifier("page-canvas")
         .accessibilityValue(
