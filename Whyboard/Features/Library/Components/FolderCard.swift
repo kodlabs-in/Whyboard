@@ -18,8 +18,8 @@ struct FolderCard: View {
       Text(folder.name)
         .font(.headline)
         .foregroundStyle(.primary)
-        .lineLimit(3, reservesSpace: true)
-        .minimumScaleFactor(0.8)
+        .lineLimit(1)
+        .truncationMode(.tail)
 
       Label("Folder", systemImage: "arrow.right")
         .font(.caption.weight(.medium))

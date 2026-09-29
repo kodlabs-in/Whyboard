@@ -88,15 +88,15 @@ struct NoteCard: View {
       Text(note.title)
         .font(.headline)
         .foregroundStyle(.primary)
-        .lineLimit(3, reservesSpace: true)
-        .minimumScaleFactor(0.8)
+        .lineLimit(1)
+        .truncationMode(.tail)
 
       if let folderName {
         Label(folderName, systemImage: "folder")
           .font(.caption.weight(.medium))
           .foregroundStyle(.secondary)
-          .lineLimit(2, reservesSpace: true)
-          .minimumScaleFactor(0.8)
+          .lineLimit(1)
+          .truncationMode(.tail)
           .accessibilityLabel("Folder: \(folderName)")
           .accessibilityIdentifier("note-folder-label")
       }
