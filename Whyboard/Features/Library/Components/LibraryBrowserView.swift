@@ -9,6 +9,7 @@ struct LibraryBrowserView: View {
   let pageCounts: [UUID: Int]
   let coverPages: [UUID: LibraryPageCover]
   let drawingRepository: DrawingRepository
+  let homeFolderNames: [UUID: String]?
   let showsSettings: Bool
   let onOpenFolder: (Folder) -> Void
   let onOpenNote: (Note) -> Void
@@ -145,6 +146,7 @@ struct LibraryBrowserView: View {
       pageCount: pageCounts[note.id, default: 0],
       previewPage: coverPages[note.id],
       drawingRepository: drawingRepository,
+      folderName: homeFolderNames.map { $0[note.folderID] ?? "Folder unavailable" },
       isSelecting: isSelecting,
       isSelected: selection.contains(.note(note.id)),
       onOpen: { handleNoteTap(note) },

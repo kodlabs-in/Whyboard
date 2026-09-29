@@ -5,6 +5,7 @@ struct NoteCard: View {
   let pageCount: Int
   let previewPage: LibraryPageCover?
   let drawingRepository: DrawingRepository
+  var folderName: String?
   var isSelecting = false
   var isSelected = false
   let onOpen: () -> Void
@@ -23,19 +24,19 @@ struct NoteCard: View {
       .accessibilityLabel(
         "Open \(note.kind.name) note, \(note.title), "
           + note.kind.libraryDetail(pageCount: pageCount)
+          + (folderName.map { ", in \($0)" } ?? "")
       )
       .accessibilityHint(accessibilityHint)
       .accessibilityValue(isSelecting ? (isSelected ? "Selected" : "Not selected") : "")
       .accessibilityAddTraits(isSelected ? .isSelected : [])
-
-      HStack(alignment: .top, spacing: 10) {
-        noteDetails
-          .contentShape(Rectangle())
-          .onTapGesture(perform: onOpen)
-
-        Spacer(minLength: 4)
+      .overlay(alignment: .topTrailing) {
         selectionControl
+          .padding(8)
       }
+
+      noteDetails
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpen)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(14)
@@ -87,7 +88,18 @@ struct NoteCard: View {
       Text(note.title)
         .font(.headline)
         .foregroundStyle(.primary)
-        .lineLimit(2)
+        .lineLimit(3, reservesSpace: true)
+        .minimumScaleFactor(0.8)
+
+      if let folderName {
+        Label(folderName, systemImage: "folder")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
+          .lineLimit(2, reservesSpace: true)
+          .minimumScaleFactor(0.8)
+          .accessibilityLabel("Folder: \(folderName)")
+          .accessibilityIdentifier("note-folder-label")
+      }
 
       HStack(spacing: 6) {
         Text(note.kind.libraryDetail(pageCount: pageCount))

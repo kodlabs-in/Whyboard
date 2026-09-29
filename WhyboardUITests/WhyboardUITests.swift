@@ -214,6 +214,40 @@ final class WhyboardUITests: XCTestCase {
   }
 
   @MainActor
+  func testHomeNoteShowsItsFolderButFolderViewDoesNot() throws {
+    let app = try XCTUnwrap(app)
+    app.buttons["New Folder"].firstMatch.tap()
+    XCTAssertTrue(app.navigationBars["New Folder"].waitForExistence(timeout: 3))
+    let nameField = app.textFields["Name"]
+    nameField.tap()
+    nameField.typeText("Calculus")
+    app.buttons["Save"].tap()
+
+    app.staticTexts["Calculus"].firstMatch.tap()
+    XCTAssertTrue(app.navigationBars["Calculus"].waitForExistence(timeout: 3))
+    app.buttons["New Note"].firstMatch.tap()
+    selectNoteType("new-note-type-infinitePages", in: app)
+    XCTAssertTrue(app.navigationBars["Untitled Note"].waitForExistence(timeout: 5))
+    app.buttons["Note Options"].tap()
+    app.buttons["Rename Note"].tap()
+    let noteNameField = app.textFields["Name"]
+    XCTAssertTrue(noteNameField.waitForExistence(timeout: 3))
+    noteNameField.tap()
+    noteNameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20))
+    noteNameField.typeText("Prerequisites")
+    app.buttons["Save"].tap()
+
+    app.navigationBars["Prerequisites"].buttons.element(boundBy: 0).tap()
+    XCTAssertTrue(app.navigationBars["Calculus"].waitForExistence(timeout: 3))
+    XCTAssertFalse(app.descendants(matching: .any)["note-folder-label"].exists)
+
+    app.navigationBars["Calculus"].buttons.element(boundBy: 0).tap()
+    let folderLabel = app.descendants(matching: .any)["note-folder-label"].firstMatch
+    XCTAssertTrue(folderLabel.waitForExistence(timeout: 5))
+    XCTAssertEqual(folderLabel.label, "Folder: Calculus")
+  }
+
+  @MainActor
   func testChangesTheDefaultPaperInSettings() throws {
     let app = try XCTUnwrap(app)
     let settingsButton = app.buttons["Settings"]

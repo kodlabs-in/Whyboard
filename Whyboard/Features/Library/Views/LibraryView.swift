@@ -181,6 +181,8 @@ struct LibraryView: View {
       pageCounts: pageSummary.pageCounts,
       coverPages: pageSummary.coverPages,
       drawingRepository: drawingRepository,
+      homeFolderNames: location == .root
+        ? Dictionary(uniqueKeysWithValues: folders.map { ($0.id, $0.name) }) : nil,
       showsSettings: location == .root,
       onOpenFolder: { routes.append(.folder($0.id)) },
       onOpenNote: { routes.append(.note($0.id)) },
